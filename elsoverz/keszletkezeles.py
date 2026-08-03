@@ -19,7 +19,7 @@ if not os.path.exists(DATABASE_PATH):
 
 
 def get_file_path(worksheet_name):
-    """Visszaadja a megadott táblázat teljes fájlelérési útvonalát a db_data mappán belül."""
+    """Visszaadja a megadott táblázat teljes fájlelérési útvonalát a db_data mappán belül asdasd a."""
     return os.path.join(DATABASE_PATH, f"{worksheet_name}.csv")
 
 
