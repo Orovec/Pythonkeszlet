@@ -25,7 +25,7 @@ def get_file_path(worksheet_name):
 
 def load_sheet_data(worksheet_name):
     """
-    Betölti egy adott nevű CSV fájl tartalmát egy pandas DataFrame-be.
+    Betölti egy adott nevű CSV fájl tartalmát egy pandas DataFrame-be  .
     Ha a fájl még nem létezik, egy üres DataFrame-et ad vissza.
     """
     filepath = get_file_path(worksheet_name)
