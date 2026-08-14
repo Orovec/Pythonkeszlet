@@ -11,7 +11,7 @@ VERSION_URL = "https://raw.githubusercontent.com/FELHASZNALONEV/REPOSITORY/main/
 UPDATE_FILE_URL = "https://raw.githubusercontent.com/FELHASZNALONEV/REPOSITORY/main/main.py"
 
 LOCAL_VERSION_FILE = "version.txt"
-MAIN_APP_FILE = "main.py"
+MAIN_APP_FILE = "keszletkezeles.py"
 
 
 def log_error(message):
