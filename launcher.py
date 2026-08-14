@@ -8,8 +8,8 @@ from tkinter import messagebox
 
 # --- BEÁLLÍTÁSOK ---
 # Itt kell megadni a távoli szerver vagy GitHub Raw linkeket, ahová majd feltöltöd a frissítéseket
-VERSION_URL = "https://raw.githubusercontent.com/FELHASZNALONEV/REPOSITORY/main/version.json"
-UPDATE_FILE_URL = "https://raw.githubusercontent.com/FELHASZNALONEV/REPOSITORY/main/main.py"
+VERSION_URL = "https://raw.githubusercontent.com/Orovec/Pythonkeszlet/refs/heads/main/launcher.py?token=GHSAT0AAAAAAEEVIVZNCTC4N75K64YH74LO2T7MMUA"
+UPDATE_FILE_URL = "https://raw.githubusercontent.com/Orovec/Pythonkeszlet/refs/heads/main/keszletkezeles.py?token=GHSAT0AAAAAAEEVIVZNGNWTAVQOFTIZZTKS2T7MNQQ"
 
 LOCAL_VERSION_FILE = "version.txt"
 MAIN_APP_FILE = "main.py"
