@@ -25,7 +25,7 @@ def log_error(message):
 
 
 def check_for_updates():
-    """Megpróbálja frissíteni a fő programot, de hiba esetén sem áll meg."""
+    """Megpróbálja frissíteni a fő programot, vagy letölti, ha még egyáltalán nincs meg."""
     try:
         local_version = "1.0.0"
         if os.path.exists(LOCAL_VERSION_FILE):
@@ -37,9 +37,10 @@ def check_for_updates():
             data = json.loads(response.read().decode("utf-8"))
             remote_version = data.get("version")
 
-        if remote_version and remote_version != local_version:
-            print(f"Új verzió elérhető: {remote_version}. Letöltés...")
-            # Új programfájl letöltése
+        # JAVÍTÁS: Akkor is letöltjük, ha eltér a verzió, VAGY ha a fő programfájl még nincsen a gépen!
+        if remote_version and (remote_version != local_version or not os.path.exists(MAIN_APP_FILE)):
+            print(f"Letöltés folyamatban...")
+
             req_file = urllib.request.Request(UPDATE_FILE_URL, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req_file, timeout=5) as response:
                 new_code = response.read()
