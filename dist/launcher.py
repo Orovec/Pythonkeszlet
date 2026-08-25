@@ -8,7 +8,7 @@ from tkinter import messagebox
 
 # --- BEÁLLÍTÁSOK ---
 VERSION_URL = "https://raw.githubusercontent.com/Orovec/Pythonkeszlet/refs/heads/main/dist/version.json"
-UPDATE_FILE_URL = "https://raw.githubusercontent.com/Orovec/Pythonkeszlet/refs/heads/main/dist/keszletkezeles.exe"
+UPDATE_FILE_URL = "https://raw.githubusercontent.com/Orovec/Pythonkeszlet/refs/heads/main/output/keszletkezeles.exe"
 
 LOCAL_VERSION_FILE = "version.json"
 MAIN_APP_FILE = "keszletkezeles.exe"
