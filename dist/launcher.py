@@ -8,7 +8,7 @@ from tkinter import messagebox
 
 # --- BEÁLLÍTÁSOK ---
 VERSION_URL = "https://raw.githubusercontent.com/Orovec/Pythonkeszlet/refs/heads/main/dist/version.json"
-# Mostantól a lefordított .EXE-t töltjük le, amiben benne van minden függőség!
+# Itt már a lefordított .EXE-t kérjük el, amiben benne van a sqlalchemy is!
 UPDATE_FILE_URL = "https://raw.githubusercontent.com/Orovec/Pythonkeszlet/refs/heads/main/dist/keszletkezeles.exe"
 
 LOCAL_VERSION_FILE = "version.json"
@@ -62,7 +62,7 @@ def launch_app():
         sys.exit(1)
 
     try:
-        # Biztonságos indítás os.startfile-lal
+        # Biztonságos indítás
         os.startfile(MAIN_APP_FILE)
         sys.exit(0)
 
@@ -75,5 +75,5 @@ def launch_app():
 
 
 if __name__ == "__main__":
-    check_for_updates()  # Csak a verzióellenőrzés és letöltés fut le
-    launch_app()  # Utána azonnali indítás
+    check_for_updates()  # Csak verzióellenőrzés
+    launch_app()  # Azonnali indítás
