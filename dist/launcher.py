@@ -8,7 +8,6 @@ from tkinter import messagebox
 
 # --- BEÁLLÍTÁSOK ---
 VERSION_URL = "https://raw.githubusercontent.com/Orovec/Pythonkeszlet/refs/heads/main/dist/version.json"
-# Itt már a lefordított .EXE-t kérjük el, amiben benne van a sqlalchemy is!
 UPDATE_FILE_URL = "https://raw.githubusercontent.com/Orovec/Pythonkeszlet/refs/heads/main/dist/keszletkezeles.exe"
 
 LOCAL_VERSION_FILE = "version.json"
@@ -33,21 +32,35 @@ def check_for_updates():
                 local_version = f.read().strip()
 
         req = urllib.request.Request(VERSION_URL, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=3) as response:
-            remote_version = response.read().decode("utf-8").strip()
+        with urllib.request.urlopen(req, timeout=5) as response:
+            raw_data = response.read().decode("utf-8").strip()
+
+        # Megpróbáljuk kitalálni, hogy JSON-e vagy sima szöveg
+        remote_version = raw_data
+        try:
+            data_json = json.loads(raw_data)
+            if isinstance(data_json, dict):
+                remote_version = str(data_json.get("version", data_json.get("verzio", raw_data))).strip()
+        except json.JSONDecodeError:
+            pass
+
+        print(f"Helyi verzió: {local_version}, Távoli verzió: {remote_version}")
 
         if remote_version and (remote_version != local_version or not os.path.exists(MAIN_APP_FILE)):
             print("Frissítés letöltése...")
             req_file = urllib.request.Request(UPDATE_FILE_URL, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req_file, timeout=10) as response:
+            with urllib.request.urlopen(req_file, timeout=15) as response:
                 new_code = response.read()
                 with open(MAIN_APP_FILE, "wb") as f:
                     f.write(new_code)
 
             with open(LOCAL_VERSION_FILE, "w", encoding="utf-8") as f:
                 f.write(remote_version)
+            print("Frissítés sikeresen befejeződött.")
+
     except Exception as e:
         log_error(f"Frissítési hiba (nem kritikus): {e}")
+        print(f"Frissítési hiba: {e}")
 
 
 def launch_app():
@@ -62,7 +75,6 @@ def launch_app():
         sys.exit(1)
 
     try:
-        # Biztonságos indítás
         os.startfile(MAIN_APP_FILE)
         sys.exit(0)
 
@@ -75,5 +87,5 @@ def launch_app():
 
 
 if __name__ == "__main__":
-    check_for_updates()  # Csak verzióellenőrzés
-    launch_app()  # Azonnali indítás
+    check_for_updates()
+    launch_app()
