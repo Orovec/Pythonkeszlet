@@ -1,0 +1,2 @@
+Nem sikerült telepíteni a(z) sqlalchemy csomagot: Command '['D:\\Pythonkeszlet\\output\\launcher.exe', '-m', 'pip', 'install', 'sqlalchemy']' returned non-zero exit status 1.
+Nem sikerült telepíteni a(z) sqlalchemy csomagot: Command '['D:\\Pythonkeszlet\\output\\launcher.exe', '-m', 'pip', 'install', 'sqlalchemy']' returned non-zero exit status 1.

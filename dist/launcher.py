@@ -6,15 +6,13 @@ import json
 import tkinter as tk
 from tkinter import messagebox
 
-# --- BEÁLLÍTÁSOk ---
+# --- BEÁLLÍTÁSOK ---
 VERSION_URL = "https://raw.githubusercontent.com/Orovec/Pythonkeszlet/refs/heads/main/dist/version.json"
-UPDATE_FILE_URL = "https://raw.githubusercontent.com/Orovec/Pythonkeszlet/refs/heads/main/dist/keszletkezeles.py"
+# Mostantól a lefordított .EXE-t töltjük le, amiben benne van minden függőség!
+UPDATE_FILE_URL = "https://raw.githubusercontent.com/Orovec/Pythonkeszlet/refs/heads/main/dist/keszletkezeles.exe"
 
 LOCAL_VERSION_FILE = "version.json"
-MAIN_APP_FILE = "keszletkezeles.py"
-
-# Ide gyűjtsd a fő programod külső függőségeit!
-REQUIRED_PACKAGES = ["sqlalchemy"]
+MAIN_APP_FILE = "keszletkezeles.exe"
 
 
 def log_error(message):
@@ -26,21 +24,8 @@ def log_error(message):
         pass
 
 
-def ensure_dependencies():
-    """Ellenőrzi a csomagokat, és ha hiányzik valami, automatikusan telepíti."""
-    for package in REQUIRED_PACKAGES:
-        try:
-            __import__(package)
-        except ImportError:
-            try:
-                # Háttérben telepíti a hiányzó csomagot pip-pel
-                subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-            except Exception as e:
-                log_error(f"Nem sikerült telepíteni a(z) {package} csomagot: {e}")
-
-
 def check_for_updates():
-    """Megpróbálja frissíteni a fő programot, vagy letölti, ha még nincs meg."""
+    """Letölti a legújabb program verziót, ha van újabb vagy hiányzik."""
     try:
         local_version = "1.0.0"
         if os.path.exists(LOCAL_VERSION_FILE):
@@ -52,8 +37,9 @@ def check_for_updates():
             remote_version = response.read().decode("utf-8").strip()
 
         if remote_version and (remote_version != local_version or not os.path.exists(MAIN_APP_FILE)):
+            print("Frissítés letöltése...")
             req_file = urllib.request.Request(UPDATE_FILE_URL, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req_file, timeout=5) as response:
+            with urllib.request.urlopen(req_file, timeout=10) as response:
                 new_code = response.read()
                 with open(MAIN_APP_FILE, "wb") as f:
                     f.write(new_code)
@@ -65,7 +51,7 @@ def check_for_updates():
 
 
 def launch_app():
-    """Elindítja a fő programot."""
+    """Elindítja a fő program .exe fájlját."""
     if not os.path.exists(MAIN_APP_FILE):
         root = tk.Tk()
         root.withdraw()
@@ -76,11 +62,8 @@ def launch_app():
         sys.exit(1)
 
     try:
-        if os.name == 'nt':
-            os.startfile(MAIN_APP_FILE)
-        else:
-            subprocess.Popen([sys.executable, MAIN_APP_FILE])
-
+        # Biztonságos indítás os.startfile-lal
+        os.startfile(MAIN_APP_FILE)
         sys.exit(0)
 
     except Exception as e:
@@ -92,6 +75,5 @@ def launch_app():
 
 
 if __name__ == "__main__":
-    ensure_dependencies()  # 1. Először ellenőrzi és telepíti a hiányzó csomagokat
-    check_for_updates()  # 2. Utána frissíti a kódot, ha van újabb
-    launch_app()  # 3. Végül elindítja az alkalmazást
+    check_for_updates()  # Csak a verzióellenőrzés és letöltés fut le
+    launch_app()  # Utána azonnali indítás
