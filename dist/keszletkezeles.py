@@ -5,6 +5,9 @@ import customtkinter as ctk
 import pandas as pd
 from sqlalchemy import create_engine
 from tkcalendar import Calendar
+import tempfile
+import os
+import webbrowser
 
 # --- Globális Beállítások ---
 ctk.set_appearance_mode("System")
@@ -18,10 +21,15 @@ engine = create_engine(DATABASE_URL)
 def load_sheet_data(table_name):
     """Betölti egy adott nevű tábla tartalmát a Neon adatbázisból egy pandas DataFrame-be."""
     try:
-        df = pd.read_sql(f'SELECT * FROM "{table_name}"', engine)
+        df = pd.read_sql(f'SELECT * "{table_name}"', engine)
         return df.astype(str)
     except Exception as e:
-        return pd.DataFrame()
+        # Ha esetleg a SQL szintaxis miatt hibázna vagy üres
+        try:
+            df = pd.read_sql(f'SELECT * FROM "{table_name}"', engine)
+            return df.astype(str)
+        except:
+            return pd.DataFrame()
 
 
 def save_sheet_data(table_name, df):
@@ -101,6 +109,7 @@ class KeszletApp(ctk.CTk):
         self.tab_keszlet = self.tabview.add("Készlet & Keresés")
         self.tab_osszekeszi = self.tabview.add("Áru Összekészítés (Kimenő)")
         self.tab_kiadas = self.tabview.add("Előzmények (Kiadva)")
+        self.tab_javaslatok = self.tabview.add("Fejlesztési javaslatok")
 
         if self.role == "admin":
             self.tab_admin_szallitas = self.tabview.add("Admin Kiszállítás")
@@ -110,6 +119,7 @@ class KeszletApp(ctk.CTk):
         self.build_keszlet_tab()
         self.build_osszekeszi_tab()
         self.build_kiadas_tab()
+        self.build_javaslatok_tab()
 
         if self.role == "admin":
             self.build_admin_szallitas_tab()
@@ -161,7 +171,8 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-        "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség", "Megjegyzés")
+            "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség",
+            "Megjegyzés")
         self.keszlet_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
         for col in columns:
@@ -460,8 +471,8 @@ class KeszletApp(ctk.CTk):
             return
         for _, row in df.iterrows():
             self.admin_keszlet_tree.insert("", "end", values=(
-            row.get("ID", ""), row.get("Beszállító", ""), row.get("Termék neve", ""), row.get("Lot szám", ""),
-            row.get("Mennyiség", ""), row.get("Lejárat", "")))
+                row.get("ID", ""), row.get("Beszállító", ""), row.get("Termék neve", ""), row.get("Lot szám", ""),
+                row.get("Mennyiség", ""), row.get("Lejárat", "")))
 
     def send_order_to_user(self):
         selected = self.admin_keszlet_tree.selection()
@@ -507,8 +518,8 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-        "Kijelölve", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felvétel Napja", "Idősáv", "Megjegyzés",
-        "Állapot")
+            "Kijelölve", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felvétel Napja", "Idősáv", "Megjegyzés",
+            "Állapot")
         self.osszekeszi_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
         column_widths = {"Kijelölve": 80, "Beszállító": 120, "Termék neve": 140, "Lot szám": 100, "Mennyiség": 90,
@@ -575,7 +586,6 @@ class KeszletApp(ctk.CTk):
             ))
 
     def prepare_delivery_preview(self):
-        """Csak megnyitja az előnézetet, még NEM vonja le a készletből semmit."""
         all_items = self.osszekeszi_tree.get_children()
         checked_items = []
 
@@ -595,11 +605,9 @@ class KeszletApp(ctk.CTk):
             _, brand, name, lot, qty_str, pickup_date, timeslot, note, status = item_vals
             processed_records.append((brand, name, lot, qty_str, pickup_date, timeslot, note))
 
-        # Előnézeti ablak meghívása (itt dől el, hogy ténylegesen megtörténik-e a levonás nyomtatáskor)
         self.open_delivery_note_preview(processed_records)
 
     def open_delivery_note_preview(self, items_list):
-        """Megnyitja a szállítólevél előnézeti ablakát. Készletlevonás CSAK a nyomtatásra kattintáskor történik!"""
         preview_win = ctk.CTkToplevel(self)
         preview_win.title("Szállítólevél - Előnézet és Nyomtatás")
         preview_win.geometry("650x800")
@@ -674,9 +682,7 @@ class KeszletApp(ctk.CTk):
         btn_frame.pack(fill="x", padx=20, pady=15)
 
         def print_and_finalize():
-            """Itt történik meg a tényleges levonás, mentés és nyomtatás, mert a felhasználó jóváhagyta."""
             try:
-                # 1. Adatbázis műveletek végrehajtása
                 df_orders = load_sheet_data("Megrendelesek")
                 df_keszlet = load_sheet_data("Keszlet")
                 df_kiadas = load_sheet_data("Kiadasok")
@@ -725,7 +731,6 @@ class KeszletApp(ctk.CTk):
                 save_sheet_data("Keszlet", df_keszlet)
                 save_sheet_data("Kiadasok", df_kiadas)
 
-                # 2. Nézetek frissítése
                 self.refresh_osszekeszi_view()
                 self.refresh_keszlet_view()
                 if hasattr(self, "refresh_kiadas_view"):
@@ -733,17 +738,31 @@ class KeszletApp(ctk.CTk):
                 if hasattr(self, "refresh_admin_szallitas_view"):
                     self.refresh_admin_szallitas_view()
 
-                # 3. Nyomtatás indítása
-                import tempfile
-                import os
+                # Nyomtatás HTML alapú böngészős párbeszédablakkal (beépített, nincs szükség külső telepítésre)
+                html_content = f"""
+                <!DOCTYPE html>
+                <html lang="hu">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Szállítólevél</title>
+                    <style>
+                        body {{ font-family: monospace; white-space: pre-wrap; margin: 20px; font-size: 14px; }}
+                    </style>
+                </head>
+                <body onload="window.print();">
+{text_box.get("1.0", "end")}
+                </body>
+                </html>
+                """
 
-                temp_path = os.path.join(tempfile.gettempdir(), "szallitolevel.txt")
+                temp_path = os.path.join(tempfile.gettempdir(), "szallitolevel.html")
                 with open(temp_path, "w", encoding="utf-8") as f:
-                    f.write(text_box.get("1.0", "end"))
+                    f.write(html_content)
 
-                os.startfile(temp_path, "print")
+                webbrowser.open(f"file:///{temp_path}")
+
                 messagebox.showinfo("Nyomtatás",
-                                    "A nyomtatási feladat elküldve, a tételek levonásra kerültek a készletből!",
+                                    "A nyomtatási ablak megnyitva, a tételek levonásra kerültek a készletből!",
                                     parent=preview_win)
                 preview_win.destroy()
 
@@ -754,7 +773,6 @@ class KeszletApp(ctk.CTk):
                                   fg_color="green", width=220, height=40)
         btn_print.pack(side="left", padx=10)
 
-        # Ha itt zárják be, a kód le sem futott, ami a készletlevonást illeti -> semmi sem változik!
         btn_close = ctk.CTkButton(btn_frame, text="Mégse / Bezárás", command=preview_win.destroy, fg_color="gray",
                                   width=150, height=40)
         btn_close.pack(side="right", padx=10)
@@ -769,8 +787,9 @@ class KeszletApp(ctk.CTk):
         if messagebox.askyesno("Törlés", "Biztosan törlöd ezt a megrendelést az összekészítési listáról?"):
             df = load_sheet_data("Megrendelesek")
             df = df[~((df["Beszállító"] == item_values[1]) & (df["Termék neve"] == item_values[2]) & (
-                        df["Lot szám"] == item_values[3]) & (df["Mennyiség"] == item_values[4]))]
+                    df["Lot szám"] == item_values[3]) & (df["Mennyiség"] == item_values[4]))]
             save_sheet_data("Megrendelesek", df)
+            self.log_action(f"Megrendelés törölve az összekészítésből: {item_values[1]} - {item_values[2]}")
             self.refresh_osszekeszi_view()
 
     # --- 4. KIADÁSOK / ELŐZMÉNYEK FÜL ---
@@ -815,7 +834,151 @@ class KeszletApp(ctk.CTk):
                 row.get("Lot szám", ""), row.get("Mennyiség", ""), row.get("Felhasználó", ""), row.get("Megjegyzés", "")
             ))
 
-    # --- 5. NAPLÓ FÜL (Admin) ---
+    # --- 5. FEJLESZTÉSI JAVASLATOK FÜL ---
+    def build_javaslatok_tab(self):
+        ctk.CTkLabel(self.tab_javaslatok, text="Fejlesztési javaslatok beküldése és kezelése",
+                     font=("Arial", 16, "bold")).pack(pady=10)
+
+        # Beküldő keret minden felhasználónak
+        input_frame = ctk.CTkFrame(self.tab_javaslatok)
+        input_frame.pack(fill="x", padx=10, pady=5)
+
+        ctk.CTkLabel(input_frame, text="Új fejlesztési javaslat írása:", font=("Arial", 12, "bold")).pack(anchor="w",
+                                                                                                          padx=10,
+                                                                                                          pady=(5, 0))
+
+        self.javaslat_textbox = ctk.CTkTextbox(input_frame, height=80, width=570)
+        self.javaslat_textbox.pack(padx=10, pady=5, fill="x")
+
+        def submit_suggestion():
+            text = self.javaslat_textbox.get("1.0", "end").strip()
+            if not text:
+                messagebox.showwarning("Figyelmeztetés", "A javaslat mező nem lehet üres!", parent=self.tab_javaslatok)
+                return
+
+            df = load_sheet_data("FejlesztesiJavaslatok")
+            new_id = str(len(df) + 1) if not df.empty else "1"
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            new_row = pd.DataFrame([{
+                "ID": new_id,
+                "Felhasznalo": self.username,
+                "Javaslat": text,
+                "Idopont": timestamp
+            }])
+            save_sheet_data("FejlesztesiJavaslatok", pd.concat([df, new_row], ignore_index=True))
+            self.log_action(f"Fejlesztési javaslat beküldve: {text[:30]}...")
+            self.javaslat_textbox.delete("1.0", "end")
+            messagebox.showinfo("Siker", "Fejlesztési javaslat sikeresen elküldve!", parent=self.tab_javaslatok)
+            if self.role == "admin" and hasattr(self, "refresh_javaslatok_view"):
+                self.refresh_javaslatok_view()
+
+        ctk.CTkButton(input_frame, text="Javaslat elküldése", command=submit_suggestion, fg_color="green",
+                      width=200).pack(anchor="w", padx=10, pady=(0, 10))
+
+        # Admin nézet: csak az admin láthatja és szerkesztheti/törölheti az összes javaslatot
+        if self.role == "admin":
+            admin_frame = ctk.CTkFrame(self.tab_javaslatok)
+            admin_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+            ctk.CTkLabel(admin_frame, text="Adminisztrátori Javaslat Kezelő (Összes beküldött javaslat):",
+                         font=("Arial", 14, "bold")).pack(anchor="w", padx=5, pady=5)
+
+            table_frame = ctk.CTkFrame(admin_frame)
+            table_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+            columns = ("ID", "Felhasználó", "Időpont", "Javaslat")
+            self.javaslat_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
+            for col in columns:
+                self.javaslat_tree.heading(col, text=col)
+                self.javaslat_tree.column(col, width=120 if col != "Javaslat" else 400)
+
+            scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.javaslat_tree.yview)
+            self.javaslat_tree.configure(yscrollcommand=scrollbar.set)
+            self.javaslat_tree.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+
+            btn_action_frame = ctk.CTkFrame(admin_frame, fg_color="transparent")
+            btn_action_frame.pack(fill="x", padx=5, pady=5)
+
+            def edit_suggestion():
+                selected = self.javaslat_tree.selection()
+                if not selected:
+                    messagebox.showwarning("Figyelmeztetés", "Válassz ki egy javaslatot a szerkesztéshez!",
+                                           parent=self.tab_javaslatok)
+                    return
+                vals = self.javaslat_tree.item(selected, "values")
+                item_id, user_name, tijd, current_text = vals
+
+                edit_win = ctk.CTkToplevel(self)
+                edit_win.title("Javaslat Szerkesztése")
+                edit_win.geometry("400x250")
+                edit_win.grab_set()
+
+                ctk.CTkLabel(edit_win, text=f"Javaslat szerkesztése ({user_name}):").pack(anchor="w",
+                                                                                          padx=20,
+                                                                                          pady=(15, 5))
+                e_box = ctk.CTkTextbox(edit_win, height=100, width=360)
+                e_box.pack(padx=20, pady=5)
+                e_box.insert("1.0", current_text)
+
+                def save_edited():
+                    new_txt = e_box.get("1.0", "end").strip()
+                    if not new_txt:
+                        messagebox.showerror("Hiba", "A szöveg nem lehet üres!", parent=edit_win)
+                        return
+                    df = load_sheet_data("FejlesztesiJavaslatok")
+                    idx = df[df["ID"].astype(str) == str(item_id)].index
+                    if not idx.empty:
+                        df.loc[idx, "Javaslat"] = new_txt
+                        save_sheet_data("FejlesztesiJavaslatok", df)
+                        self.log_action(f"Fejlesztési javaslat szerkesztve (ID: {item_id})")
+                        self.refresh_javaslatok_view()
+                        edit_win.destroy()
+                        messagebox.showinfo("Siker", "Javaslat módosítva!", parent=self.tab_javaslatok)
+
+                ctk.CTkButton(edit_win, text="Mentés", command=save_edited, fg_color="green", width=150).pack(pady=10)
+
+            def delete_suggestion():
+                selected = self.javaslat_tree.selection()
+                if not selected:
+                    messagebox.showwarning("Figyelmeztetés", "Válassz ki egy javaslatot a törléshez!",
+                                           parent=self.tab_javaslatok)
+                    return
+                vals = self.javaslat_tree.item(selected, "values")
+                item_id = vals[0]
+
+                if messagebox.askyesno("Törlés", "Biztosan törlöd ezt a fejlesztési javaslatot?"):
+                    df = load_sheet_data("FejlesztesiJavaslatok")
+                    df = df[df["ID"].astype(str) != str(item_id)]
+                    save_sheet_data("FejlesztesiJavaslatok", df)
+                    self.log_action(f"Fejlesztési javaslat törölve (ID: {item_id})")
+                    self.refresh_javaslatok_view()
+
+            btn_edit = ctk.CTkButton(btn_action_frame, text="Kijelölt szerkesztése", command=edit_suggestion,
+                                     fg_color="darkorange", width=180)
+            btn_edit.pack(side="left", padx=5)
+
+            btn_del = ctk.CTkButton(btn_action_frame, text="Kijelölt törlése", command=delete_suggestion,
+                                    fg_color="red", width=150)
+            btn_del.pack(side="left", padx=5)
+
+            self.refresh_javaslatok_view()
+
+    def refresh_javaslatok_view(self):
+        if not hasattr(self, "javaslat_tree"):
+            return
+        for row in self.javaslat_tree.get_children():
+            self.javaslat_tree.delete(row)
+        df = load_sheet_data("FejlesztesiJavaslatok")
+        if df.empty:
+            return
+        for _, row in df.iterrows():
+            self.javaslat_tree.insert("", "end", values=(
+                row.get("ID", ""), row.get("Felhasznalo", ""), row.get("Idopont", ""), row.get("Javaslat", "")
+            ))
+
+    # --- 6. NAPLÓ FÜL (Admin) ---
     def build_naplo_tab(self):
         ctk.CTkLabel(self.tab_naplo, text="Rendszerszintű eseménynapló", font=("Arial", 16, "bold")).pack(pady=10)
         table_frame = ctk.CTkFrame(self.tab_naplo)
@@ -845,7 +1008,7 @@ class KeszletApp(ctk.CTk):
             self.naplo_tree.insert("", "end",
                                    values=(row.get("Idopont", ""), row.get("Felhasználó", ""), row.get("Muvelet", "")))
 
-    # --- 6. FELHASZNÁLÓ KEZELÉS FÜL (Admin) ---
+    # --- 7. FELHASZNÁLÓ KEZELÉS FÜL (Admin) ---
     def build_users_tab(self):
         ctk.CTkLabel(self.tab_users, text="Rendszerfelhasználók kezelése", font=("Arial", 16, "bold")).pack(pady=10)
 
