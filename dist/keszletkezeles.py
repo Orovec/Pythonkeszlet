@@ -108,9 +108,12 @@ class KeszletApp(ctk.CTk):
         self.tab_keszlet = self.tabview.add("Készlet & Keresés")
         self.tab_osszekeszi = self.tabview.add("Áru Összekészítés (Kimenő)")
         self.tab_kiadas = self.tabview.add("Előzmények (Kiadva)")
-        self.tab_javaslatok = self.tabview.add("Fejlesztési javaslatok")
 
-        if self.role == "admin":
+        # A fejlesztési javaslatok fület csak akkor adjuk hozzá, ha NEM vezető (vagyis user vagy admin láthatja, de a vezető nem)
+        if self.role != "vezető":
+            self.tab_javaslatok = self.tabview.add("Fejlesztési javaslatok")
+
+        if self.role in ["admin", "vezető"]:
             self.tab_admin_szallitas = self.tabview.add("Admin Kiszállítás")
             self.tab_naplo = self.tabview.add("Napló")
             self.tab_users = self.tabview.add("Felhasználó kezelés")
@@ -118,9 +121,11 @@ class KeszletApp(ctk.CTk):
         self.build_keszlet_tab()
         self.build_osszekeszi_tab()
         self.build_kiadas_tab()
-        self.build_javaslatok_tab()
 
-        if self.role == "admin":
+        if self.role != "vezető":
+            self.build_javaslatok_tab()
+
+        if self.role in ["admin", "vezető"]:
             self.build_admin_szallitas_tab()
             self.build_naplo_tab()
             self.build_users_tab()
@@ -154,7 +159,7 @@ class KeszletApp(ctk.CTk):
                                   fg_color="gray")
         btn_reset.pack(side="left", padx=5, pady=5)
 
-        if self.role == "admin":
+        if self.role in ["admin", "vezető"]:
             btn_del = ctk.CTkButton(control_frame, text="Kijelölt törlése", command=self.delete_product, fg_color="red")
             btn_del.pack(side="right", padx=5, pady=5)
 
@@ -333,7 +338,7 @@ class KeszletApp(ctk.CTk):
         ctk.CTkButton(win, text="Mentés", command=save_new, fg_color="green", width=200).pack(pady=20)
 
     def delete_product(self):
-        if self.role != "admin":
+        if self.role not in ["admin", "vezető"]:
             messagebox.showerror("Jogosultság hiba", "Nincs jogosultságod!")
             return
         selected_item = self.keszlet_tree.selection()
@@ -651,7 +656,7 @@ class KeszletApp(ctk.CTk):
                                      command=self.prepare_delivery_preview, fg_color="green", width=310)
         btn_complete.pack(side="left", padx=5)
 
-        if self.role == "admin":
+        if self.role in ["admin", "vezető"]:
             btn_del_order = ctk.CTkButton(btn_frame, text="Kijelölt törlése", command=self.delete_order_admin,
                                           fg_color="red", width=130)
             btn_del_order.pack(side="left", padx=5)
@@ -689,6 +694,13 @@ class KeszletApp(ctk.CTk):
             if vals:
                 vals[0] = "☑"
                 self.osszekeszi_tree.item(item, values=vals, tags=("checked",))
+
+    def desdeselect_all_orders(self):
+        for item in self.osszekeszi_tree.get_children():
+            vals = list(self.osszekeszi_tree.item(item, "values"))
+            if vals:
+                vals[0] = "☐"
+                self.osszekeszi_tree.item(item, values=vals, tags=())
 
     def deselect_all_orders(self):
         for item in self.osszekeszi_tree.get_children():
@@ -920,7 +932,7 @@ class KeszletApp(ctk.CTk):
         btn_close.pack(side="right", padx=10)
 
     def delete_order_admin(self):
-        if self.role != "admin":
+        if self.role not in ["admin", "vezető"]:
             return
         selected = self.osszekeszi_tree.selection()
         if not selected:
@@ -1115,7 +1127,7 @@ class KeszletApp(ctk.CTk):
                 row.get("ID", ""), row.get("Felhasznalo", ""), row.get("Idopont", ""), row.get("Javaslat", "")
             ))
 
-    # --- 6. NAPLÓ FÜL (Admin) ---
+    # --- 6. NAPLÓ FÜL (Admin / Vezető) ---
     def build_naplo_tab(self):
         ctk.CTkLabel(self.tab_naplo, text="Rendszerszintű eseménynapló", font=("Arial", 16, "bold")).pack(pady=10)
         table_frame = ctk.CTkFrame(self.tab_naplo)
@@ -1145,7 +1157,7 @@ class KeszletApp(ctk.CTk):
             self.naplo_tree.insert("", "end",
                                    values=(row.get("Idopont", ""), row.get("Felhasználó", ""), row.get("Muvelet", "")))
 
-    # --- 7. FELHASZNÁLÓ KEZELÉS FÜL (Admin) ---
+    # --- 7. FELHASZNÁLÓ KEZELÉS FÜL (Admin / Vezető) ---
     def build_users_tab(self):
         ctk.CTkLabel(self.tab_users, text="Rendszerfelhasználók kezelése", font=("Arial", 16, "bold")).pack(pady=10)
 
@@ -1161,7 +1173,7 @@ class KeszletApp(ctk.CTk):
         self.new_pass_entry.pack(side="left", padx=5)
 
         ctk.CTkLabel(form_frame, text="Szint:").pack(side="left", padx=5)
-        self.new_role_combo = ctk.CTkComboBox(form_frame, values=["user", "admin"], width=100)
+        self.new_role_combo = ctk.CTkComboBox(form_frame, values=["user", "vezető", "admin"], width=100)
         self.new_role_combo.pack(side="left", padx=5)
         self.new_role_combo.set("user")
 
