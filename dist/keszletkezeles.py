@@ -709,7 +709,8 @@ class KeszletApp(ctk.CTk):
         default_shipment_name = items_list[0][0] if items_list else "Szállítmány"
 
         ctk.CTkLabel(preview_win, text="SZÁLLÍTÓLEVÉL", font=("Arial", 22, "bold")).pack(pady=(15, 5))
-        ctk.CTkLabel(preview_win, text=f"Kiállítás dátuma: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}", font=("Arial", 11)).pack(pady=(0, 10))
+        ctk.CTkLabel(preview_win, text=f"Kiállítás dátuma: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                     font=("Arial", 11)).pack(pady=(0, 10))
 
         input_frame = ctk.CTkFrame(preview_win)
         input_frame.pack(fill="x", padx=20, pady=5)
@@ -718,6 +719,16 @@ class KeszletApp(ctk.CTk):
         e_szallitmany = ctk.CTkEntry(input_frame, width=570)
         e_szallitmany.pack(padx=10, pady=5)
         e_szallitmany.insert(0, default_shipment_name)
+
+        if self.role != "admin":
+            e_szallitmany.configure(state="disabled")
+
+        ctk.CTkLabel(input_frame, text="Vevő / Cég neve (hova szállítjuk):").pack(anchor="w", padx=10, pady=(5, 0))
+        e_vevo = ctk.CTkEntry(input_frame, width=570)
+        e_vevo.pack(padx=10, pady=5)
+        e_vevo.insert(0, "Novotic Kft.")
+        # ... (a többi kód változatlan)
+        # ------------------------------------------------------
 
         ctk.CTkLabel(input_frame, text="Vevő / Cég neve (hova szállítjuk):").pack(anchor="w", padx=10, pady=(5, 0))
         e_vevo = ctk.CTkEntry(input_frame, width=570)
