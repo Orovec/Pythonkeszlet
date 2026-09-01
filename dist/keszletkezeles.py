@@ -799,7 +799,7 @@ class KeszletApp(ctk.CTk):
                         (df_orders["Termék neve"] == name) &
                         (df_orders["Lot szám"] == lot) &
                         (df_orders["Mennyiség"] == qty_str)
-                    ]
+                        ]
 
                     if not matched_rows.empty:
                         row_idx = matched_rows.index[0]
@@ -827,7 +827,8 @@ class KeszletApp(ctk.CTk):
                         }])
                         df_kiadas = pd.concat([df_kiadas, new_kiadas], ignore_index=True)
 
-                        self.log_action(f"Szállítmány összekészítve & kiadva [{shipment_name}]: {brand} - {name}, Mennyiség: {qty_str}")
+                        self.log_action(
+                            f"Szállítmány összekészítve & kiadva [{shipment_name}]: {brand} - {name}, Mennyiség: {qty_str}")
 
                 save_sheet_data("Megrendelesek", df_orders)
                 save_sheet_data("Keszlet", df_keszlet)
@@ -841,28 +842,44 @@ class KeszletApp(ctk.CTk):
                     self.refresh_admin_szallitas_view()
 
                 html_content = f"""
-                <!DOCTYPE html>
-                <html lang="hu">
-                <head>
-                    <meta charset="UTF-8">
-                    <title>Szállítólevél</title>
-                    <style>
-                        body {{ font-family: monospace; white-space: pre-wrap; margin: 20px; font-size: 14px; }}
-                    </style>
-                </head>
-                <body onload="window.print();">
-{text_box.get("1.0", "end")}
-                </body>
-                </html>
-                """
+                        <!DOCTYPE html>
+                        <html lang="hu">
+                        <head>
+                            <meta charset="UTF-8">
+                            <title>Szállítólevél</title>
+                            <style>
+                                body {{ font-family: monospace; white-space: pre-wrap; margin: 20px; font-size: 14px; }}
+                            </style>
+                        </head>
+                        <body onload="window.print();">
+        {text_box.get("1.0", "end")}
+                        </body>
+                        </html>
+                        """
 
-                temp_path = os.path.join(tempfile.gettempdir(), "szallitolevel.html")
+                # --- ITT VAN AZ ÚJ MENTÉSI LOGIKA ---
+                import re
+                save_dir = os.path.join(os.getcwd(), "szallitolevelek")
+                os.makedirs(save_dir, exist_ok=True)
+
+                current_date_str = datetime.date.today().strftime("%Y-%m-%d")
+                safe_shipment_name = re.sub(r'[\/*?:"<>|]', "", default_shipment_name)
+                file_name = f"{current_date_str}_{safe_shipment_name}.html"
+                file_path = os.path.join(save_dir, file_name)
+
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(html_content)
+                # ------------------------------------
+
+                temp_path = os.path.join(tempfile.gettempdir(), "szallitolevelek.html")
                 with open(temp_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
 
                 webbrowser.open(f"file:///{temp_path}")
 
-                messagebox.showinfo("Nyomtatás", "A nyomtatási ablak megnyitva, a tételek levonásra kerültek a készletből!", parent=preview_win)
+                messagebox.showinfo("Nyomtatás",
+                                    f"A szállítólevél mentve ide:\n{file_path}\nés a nyomtatási ablak megnyitva!",
+                                    parent=preview_win)
                 preview_win.destroy()
 
             except Exception as e:
