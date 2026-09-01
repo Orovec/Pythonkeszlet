@@ -109,7 +109,6 @@ class KeszletApp(ctk.CTk):
         self.tab_osszekeszi = self.tabview.add("Áru Összekészítés (Kimenő)")
         self.tab_kiadas = self.tabview.add("Előzmények (Kiadva)")
 
-        # A fejlesztési javaslatok fület csak akkor adjuk hozzá, ha NEM vezető (vagyis user vagy admin láthatja, de a vezető nem)
         if self.role != "vezető":
             self.tab_javaslatok = self.tabview.add("Fejlesztési javaslatok")
 
@@ -131,6 +130,35 @@ class KeszletApp(ctk.CTk):
             self.build_users_tab()
 
         self.log_action("Bejelentkezés a rendszerbe")
+
+        # 3 másodpercenkénti automatikus adatbázis-frissítés indítása
+        self.after(3000, self.auto_refresh)
+
+    def auto_refresh(self):
+        """Minden 3 másodpercben lefut, és frissíti az összes nyitott fül adatait."""
+        if hasattr(self, "username"):
+            try:
+                if hasattr(self, "keszlet_tree"):
+                    self.refresh_keszlet_view()
+                if hasattr(self, "admin_keszlet_tree"):
+                    self.refresh_admin_szallitas_view()
+                if hasattr(self, "current_shipment_tree"):
+                    self.refresh_current_shipment_view()
+                if hasattr(self, "osszekeszi_tree"):
+                    self.refresh_osszekeszi_view()
+                if hasattr(self, "kiadas_tree"):
+                    self.refresh_kiadas_view()
+                if hasattr(self, "javaslat_tree"):
+                    self.refresh_javaslatok_view()
+                if hasattr(self, "naplo_tree"):
+                    self.refresh_naplo_view()
+                if hasattr(self, "users_tree"):
+                    self.refresh_users_view()
+            except Exception:
+                pass
+
+            # Újraütemezés 3 másodperc múlva (3000 ezredmásodperc)
+            self.after(3000, self.auto_refresh)
 
     def log_action(self, action):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -191,6 +219,14 @@ class KeszletApp(ctk.CTk):
         self.refresh_keszlet_view()
 
     def refresh_keszlet_view(self):
+        if not hasattr(self, "keszlet_tree"):
+            return
+
+        # Megőrizzük az aktuális kijelölést, ha lehetséges
+        selected_items = self.keszlet_tree.selection()
+        selected_ids = [self.keszlet_tree.item(item, "values")[0] for item in selected_items if
+                        self.keszlet_tree.item(item, "values")]
+
         for row in self.keszlet_tree.get_children():
             self.keszlet_tree.delete(row)
 
@@ -210,11 +246,15 @@ class KeszletApp(ctk.CTk):
             except ValueError:
                 pass
 
-            self.keszlet_tree.insert("", "end", values=(
-                row.get("ID", ""), row.get("Beszállító", ""), row.get("Termék neve", ""),
+            item_id = row.get("ID", "")
+            row_id = self.keszlet_tree.insert("", "end", values=(
+                item_id, row.get("Beszállító", ""), row.get("Termék neve", ""),
                 row.get("Lot szám", ""), row.get("Gyártás ideje", ""), row.get("Lejárat", ""),
                 qty, row.get("Megjegyzés", "")
             ))
+
+            if item_id in selected_ids:
+                self.keszlet_tree.selection_add(row_id)
 
     def reset_keszlet_search(self):
         self.search_entry.delete(0, "end")
@@ -414,7 +454,7 @@ class KeszletApp(ctk.CTk):
         ctk.CTkButton(win, text="Kiadás rögzítése", command=confirm_shipment, fg_color="darkorange", width=200).pack(
             pady=20)
 
-    # --- 2. ADMIN KISZÁLLÍTÁS FÜL (Kétoszlopos nézet) ---
+    # --- 2. ADMIN KISZÁLLÍTÁS FÜL ---
     def build_admin_szallitas_tab(self):
         ctk.CTkLabel(self.tab_admin_szallitas, text="Szállítmányok összeállítása (Csoportosított rendelések)",
                      font=("Arial", 16, "bold")).pack(pady=5)
@@ -555,9 +595,7 @@ class KeszletApp(ctk.CTk):
         timeslot = self.admin_timeslot_entry.get().strip()
 
         if not shipment_name or not qty_str or not pickup_date or not timeslot:
-            messagebox.showerror("Hiba",
-                                 "Minden mezőt (Szállítmány azonosító, Mennyiség, Dátum, Idősáv) ki kell tölteni!",
-                                 parent=self.tab_admin_szallitas)
+            messagebox.showerror("Hiba", "Minden mezőt ki kell tölteni!", parent=self.tab_admin_szallitas)
             return
 
         try:
@@ -610,7 +648,7 @@ class KeszletApp(ctk.CTk):
             self.refresh_current_shipment_view()
             self.refresh_osszekeszi_view()
 
-    # --- 3. ÁRU ÖSSZEKÉSZÍTÉS FÜL (Halványzöld kiemeléssel) ---
+    # --- 3. ÁRU ÖSSZEKÉSZÍTÉS FÜL ---
     def build_osszekeszi_tab(self):
         ctk.CTkLabel(self.tab_osszekeszi, text="Kimenő áruk összekészítése (Szállítmányok szerinti csoportosítás)",
                      font=("Arial", 16, "bold")).pack(pady=10)
@@ -623,7 +661,6 @@ class KeszletApp(ctk.CTk):
         "Idősáv", "Megjegyzés", "Állapot")
         self.osszekeszi_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
-        # Halványzöld háttérszín definiálása a kijelölt sorokhoz (#d4edda = halvány mentazöld)
         self.osszekeszi_tree.tag_configure("checked", background="#d4edda")
 
         column_widths = {"Kijelölve": 80, "Szállítmány Neve": 130, "Beszállító": 110, "Termék neve": 130,
@@ -638,7 +675,6 @@ class KeszletApp(ctk.CTk):
         self.osszekeszi_tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        # Kattintás esemény a checkbox váltásához és a háttérszín frissítéséhez
         self.osszekeszi_tree.bind("<Button-1>", self.on_osszekeszi_click)
 
         btn_frame = ctk.CTkFrame(self.tab_osszekeszi)
@@ -668,7 +704,6 @@ class KeszletApp(ctk.CTk):
         self.refresh_osszekeszi_view()
 
     def on_osszekeszi_click(self, event):
-        """Kattintás kezelése: az első oszlopban váltja a pipát és a halványzöld kiemelést."""
         region = self.osszekeszi_tree.identify("region", event.x, event.y)
         if region == "cell":
             column = self.osszekeszi_tree.identify_column(event.x)
@@ -695,13 +730,6 @@ class KeszletApp(ctk.CTk):
                 vals[0] = "☑"
                 self.osszekeszi_tree.item(item, values=vals, tags=("checked",))
 
-    def desdeselect_all_orders(self):
-        for item in self.osszekeszi_tree.get_children():
-            vals = list(self.osszekeszi_tree.item(item, "values"))
-            if vals:
-                vals[0] = "☐"
-                self.osszekeszi_tree.item(item, values=vals, tags=())
-
     def deselect_all_orders(self):
         for item in self.osszekeszi_tree.get_children():
             vals = list(self.osszekeszi_tree.item(item, "values"))
@@ -712,6 +740,14 @@ class KeszletApp(ctk.CTk):
     def refresh_osszekeszi_view(self):
         if not hasattr(self, "osszekeszi_tree"):
             return
+
+        # Megőrizzük a korábbi pipákat/kijelöléseket frissítés közben is
+        checked_rows = set()
+        for item in self.osszekeszi_tree.get_children():
+            vals = self.osszekeszi_tree.item(item, "values")
+            if vals and vals[0] == "☑":
+                checked_rows.add((vals[1], vals[2], vals[3], vals[4]))
+
         for row in self.osszekeszi_tree.get_children():
             self.osszekeszi_tree.delete(row)
 
@@ -723,11 +759,20 @@ class KeszletApp(ctk.CTk):
             df["Szallitmany_Nev"] = "Egyedi Szállítás"
 
         for _, row in df.iterrows():
+            szall = row.get("Szallitmany_Nev", "")
+            besz = row.get("Beszállító", "")
+            nev = row.get("Termék neve", "")
+            lot = row.get("Lot szám", "")
+
+            is_checked = (szall, besz, nev, lot) in checked_rows
+            checkbox = "☑" if is_checked else "☐"
+            tags = ("checked",) if is_checked else ()
+
             self.osszekeszi_tree.insert("", "end", values=(
-                "☐", row.get("Szallitmany_Nev", ""), row.get("Beszállító", ""), row.get("Termék neve", ""),
-                row.get("Lot szám", ""), row.get("Mennyiség", ""), row.get("Felvetel_Datum", ""),
+                checkbox, szall, besz, nev, lot,
+                row.get("Mennyiség", ""), row.get("Felvetel_Datum", ""),
                 row.get("Idosav", ""), row.get("Megjegyzés", ""), row.get("Allapot", "")
-            ))
+            ), tags=tags)
 
     def prepare_delivery_preview(self):
         all_items = self.osszekeszi_tree.get_children()
@@ -739,9 +784,7 @@ class KeszletApp(ctk.CTk):
                 checked_items.append(vals)
 
         if not checked_items:
-            messagebox.showwarning("Figyelmeztetés",
-                                   "Nincs kijelölve egyetlen tétel sem! Kattints a sorok elején lévő négyzetbe (☑) a kijelöléshez.",
-                                   parent=self.tab_osszekeszi)
+            messagebox.showwarning("Figyelmeztetés", "Nincs kijelölve egyetlen tétel sem!", parent=self.tab_osszekeszi)
             return
 
         processed_records = []
@@ -1127,7 +1170,7 @@ class KeszletApp(ctk.CTk):
                 row.get("ID", ""), row.get("Felhasznalo", ""), row.get("Idopont", ""), row.get("Javaslat", "")
             ))
 
-    # --- 6. NAPLÓ FÜL (Admin / Vezető) ---
+    # --- 6. NAPLÓ FÜL ---
     def build_naplo_tab(self):
         ctk.CTkLabel(self.tab_naplo, text="Rendszerszintű eseménynapló", font=("Arial", 16, "bold")).pack(pady=10)
         table_frame = ctk.CTkFrame(self.tab_naplo)
@@ -1157,7 +1200,7 @@ class KeszletApp(ctk.CTk):
             self.naplo_tree.insert("", "end",
                                    values=(row.get("Idopont", ""), row.get("Felhasználó", ""), row.get("Muvelet", "")))
 
-    # --- 7. FELHASZNÁLÓ KEZELÉS FÜL (Admin / Vezető) ---
+    # --- 7. FELHASZNÁLÓ KEZELÉS FÜL ---
     def build_users_tab(self):
         ctk.CTkLabel(self.tab_users, text="Rendszerfelhasználók kezelése", font=("Arial", 16, "bold")).pack(pady=10)
 
