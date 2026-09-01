@@ -108,9 +108,7 @@ class KeszletApp(ctk.CTk):
         self.tab_keszlet = self.tabview.add("Készlet & Keresés")
         self.tab_osszekeszi = self.tabview.add("Áru Összekészítés (Kimenő)")
         self.tab_kiadas = self.tabview.add("Előzmények (Kiadva)")
-
-        if self.role != "vezető":
-            self.tab_javaslatok = self.tabview.add("Fejlesztési javaslatok")
+        self.tab_javaslatok = self.tabview.add("Fejlesztési javaslatok")
 
         if self.role in ["admin", "vezető"]:
             self.tab_admin_szallitas = self.tabview.add("Admin Kiszállítás")
@@ -120,9 +118,7 @@ class KeszletApp(ctk.CTk):
         self.build_keszlet_tab()
         self.build_osszekeszi_tab()
         self.build_kiadas_tab()
-
-        if self.role != "vezető":
-            self.build_javaslatok_tab()
+        self.build_javaslatok_tab()
 
         if self.role in ["admin", "vezető"]:
             self.build_admin_szallitas_tab()
@@ -1172,7 +1168,7 @@ class KeszletApp(ctk.CTk):
             messagebox.showerror("Hiba", "Az alapértelmezett admin felhasználó nem törölhető!", parent=self.tab_users)
             return
 
-        if messagebox.askyesno("Törlés", f"Biztosan törlöd a következő felhasználót: {u_name}?"):
+        if messagebox.askyesno("Törlés", "Biztosan törlöd a következő felhasználót: " + u_name + "?"):
             df = load_sheet_data("Felhasznalok")
             df = df[df["felhasznalo"] != u_name]
             save_sheet_data("Felhasznalok", df)
