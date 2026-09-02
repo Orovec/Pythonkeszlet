@@ -97,6 +97,7 @@ class KeszletApp(ctk.CTk):
     def start_main_app(self, username, role):
         self.username = username
         self.role = role
+        self.temp_shipment_items = []
 
         self.clear_window()
         self.geometry("1200x700")
@@ -137,6 +138,49 @@ class KeszletApp(ctk.CTk):
 
         if hasattr(self, "naplo_tree"):
             self.refresh_naplo_view()
+
+    # --- Segédfüggvények a szállítmány azonosító egyediségéhez ---
+    def is_shipment_name_taken(self, name):
+        if not name:
+            return False
+        # Ellenőrzés az aktív megrendelések között
+        df_orders = load_sheet_data("Megrendelesek")
+        if not df_orders.empty and "Szallitmany_Nev" in df_orders.columns:
+            if name in df_orders["Szallitmany_Nev"].values:
+                return True
+        # Ellenőrzés a korábban mentett szállítólevelek fájljai között
+        save_dir = os.path.join(os.getcwd(), "szallitolevelek")
+        if os.path.exists(save_dir):
+            for fname in os.listdir(save_dir):
+                if name in fname:
+                    return True
+        return False
+
+    def get_auto_shipment_name(self):
+        date_str = datetime.date.today().strftime('%Y%m%d')
+        num = 1
+        while True:
+            candidate = f"SZALL-{date_str}-{num}"
+            if not self.is_shipment_name_taken(candidate):
+                return candidate
+            num += 1
+
+    def check_shipment_name_validity(self, event=None):
+        if not hasattr(self, "admin_shipment_name_entry"):
+            return False
+        name = self.admin_shipment_name_entry.get().strip()
+        if self.is_shipment_name_taken(name):
+            messagebox.showwarning(
+                "Figyelmeztetés",
+                f"Ez a szállítmány azonosító ('{name}') már létezik vagy fel lett használva!\n\nA rendszer visszaállította a következő szabad azonosítóra. Kérlek ellenőrizd, majd kattints újra a gombra.",
+                parent=self.tab_admin_szallitas if hasattr(self, "tab_admin_szallitas") else self
+            )
+            correct_name = self.get_auto_shipment_name()
+            self.admin_shipment_name_entry.delete(0, "end")
+            self.admin_shipment_name_entry.insert(0, correct_name)
+            self.refresh_current_shipment_view()
+            return True  # Jelzi, hogy foglalt volt és frissítve lett
+        return False
 
     # --- 1. KÉSZLET & KERESÉS FÜL ---
     def build_keszlet_tab(self):
@@ -460,8 +504,9 @@ class KeszletApp(ctk.CTk):
         self.admin_shipment_name_entry = ctk.CTkEntry(shipment_group_frame, placeholder_text="SZALL-2026-001",
                                                       width=170)
         self.admin_shipment_name_entry.pack(side="left", padx=5)
-        self.admin_shipment_name_entry.insert(0, f"SZALL-{datetime.date.today().strftime('%Y%m%d')}-1")
+        self.admin_shipment_name_entry.insert(0, self.get_auto_shipment_name())
         self.admin_shipment_name_entry.bind("<KeyRelease>", lambda e: self.refresh_current_shipment_view())
+        self.admin_shipment_name_entry.bind("<FocusOut>", self.check_shipment_name_validity)
 
         ctk.CTkLabel(shipment_group_frame, text="Dátum:").pack(side="left", padx=(10, 2))
         self.admin_date_entry = ctk.CTkEntry(shipment_group_frame, width=90)
@@ -526,7 +571,7 @@ class KeszletApp(ctk.CTk):
         btn_del_from_shipment.pack(side="right")
 
         right_columns = ("SorID", "Termék neve", "Lot", "Mennyiség", "Megjegyzés")
-        self.current_shipment_tree = ttk.Treeview(right_pane, columns=right_columns, show="headings", height=15)
+        self.current_shipment_tree = ttk.Treeview(right_pane, columns=right_columns, show="headings", height=12)
         right_col_widths = {"SorID": 40, "Termék neve": 140, "Lot": 80, "Mennyiség": 65, "Megjegyzés": 130}
         for col in right_columns:
             self.current_shipment_tree.heading(col, text=col)
@@ -536,6 +581,15 @@ class KeszletApp(ctk.CTk):
         self.current_shipment_tree.configure(yscrollcommand=scrollbar_right.set)
         self.current_shipment_tree.pack(side="top", fill="both", expand=True, padx=5)
         scrollbar_right.pack(side="right", fill="y")
+
+        btn_send_to_osszekeszi_tab = ctk.CTkButton(
+            right_pane,
+            text="Küldés az Áru Összekészítésbe",
+            command=self.push_shipment_to_osszekeszi,
+            fg_color="green",
+            height=36
+        )
+        btn_send_to_osszekeszi_tab.pack(fill="x", padx=5, pady=5)
 
         self.refresh_admin_szallitas_view()
 
@@ -559,22 +613,20 @@ class KeszletApp(ctk.CTk):
         for row in self.current_shipment_tree.get_children():
             self.current_shipment_tree.delete(row)
 
-        current_shipment_name = self.admin_shipment_name_entry.get().strip()
-        if not current_shipment_name:
-            return
+        if not hasattr(self, "temp_shipment_items"):
+            self.temp_shipment_items = []
 
-        df_orders = load_sheet_data("Megrendelesek")
-        if df_orders.empty or "Szallitmany_Nev" not in df_orders.columns:
-            return
-
-        filtered = df_orders[df_orders["Szallitmany_Nev"] == current_shipment_name]
-        for idx, row in filtered.iterrows():
+        for idx, item in enumerate(self.temp_shipment_items):
             self.current_shipment_tree.insert("", "end", values=(
-                str(idx), row.get("Termék neve", ""), row.get("Lot szám", ""),
-                row.get("Mennyiség", ""), row.get("Megjegyzés", "")
+                str(idx), item.get("Termék neve", ""), item.get("Lot szám", ""),
+                item.get("Mennyiség", ""), item.get("Megjegyzés", "")
             ))
 
     def send_order_to_user(self):
+        # Ha a szállítmány azonosító már létezik, figyelmeztetünk, átírjuk és MEGÁLLUNK (várunk a gombnyomásra)
+        if self.check_shipment_name_validity():
+            return
+
         selected = self.admin_keszlet_tree.selection()
         if not selected:
             messagebox.showwarning("Figyelmeztetés", "Válassz ki egy tételt a bal oldali készletből!",
@@ -600,19 +652,25 @@ class KeszletApp(ctk.CTk):
             return
 
         if 1 <= qty_val <= max_val:
-            df_orders = load_sheet_data("Megrendelesek")
-            new_order = pd.DataFrame([{
-                "ID": item_id, "Szallitmany_Nev": shipment_name, "Beszállító": brand, "Termék neve": name,
+            if not hasattr(self, "temp_shipment_items"):
+                self.temp_shipment_items = []
+
+            new_order = {
+                "ID": item_id,
+                "Szallitmany_Nev": shipment_name,
+                "Beszállító": brand,
+                "Termék neve": name,
                 "Lot szám": lot,
-                "Mennyiség": str(qty_val), "Felvetel_Datum": pickup_date, "Idosav": timeslot,
-                "Megjegyzés": self.admin_note_entry.get().strip(), "Allapot": "Függőben (Összekészítés alatt)"
-            }])
-            save_sheet_data("Megrendelesek", pd.concat([df_orders, new_order], ignore_index=True))
-            self.log_action(f"Szállítmányba ({shipment_name}) tételt helyezve: {brand} - {name} (Mennyiség: {qty_val})")
+                "Mennyiség": str(qty_val),
+                "Felvetel_Datum": pickup_date,
+                "Idosav": timeslot,
+                "Megjegyzés": self.admin_note_entry.get().strip(),
+                "Allapot": "Függőben (Összekészítés alatt)"
+            }
+            self.temp_shipment_items.append(new_order)
 
             self.admin_note_entry.delete(0, "end")
             self.refresh_current_shipment_view()
-            self.refresh_osszekeszi_view()
         else:
             messagebox.showerror("Hiba", "Helytelen mennyiség!", parent=self.tab_admin_szallitas)
 
@@ -623,25 +681,49 @@ class KeszletApp(ctk.CTk):
                                    parent=self.tab_admin_szallitas)
             return
 
-        vals = self.current_shipment_tree.item(selected, "values")
-        df_orders = load_sheet_data("Megrendelesek")
-        if df_orders.empty:
+        item_index = self.current_shipment_tree.index(selected[0])
+        if hasattr(self, "temp_shipment_items") and 0 <= item_index < len(self.temp_shipment_items):
+            self.temp_shipment_items.pop(item_index)
+            self.refresh_current_shipment_view()
+
+    def push_shipment_to_osszekeszi(self):
+        current_shipment_name = self.admin_shipment_name_entry.get().strip()
+        if not current_shipment_name:
+            messagebox.showwarning("Figyelmeztetés", "Add meg a szállítmány azonosítóját!",
+                                   parent=self.tab_admin_szallitas)
+            return
+
+        # Ha létezik, figyelmeztetünk, átírjuk és MEGÁLLUNK (várunk a gombnyomásra)
+        if self.check_shipment_name_validity():
             return
 
         current_shipment_name = self.admin_shipment_name_entry.get().strip()
-        filtered_idx = df_orders[
-            (df_orders["Szallitmany_Nev"] == current_shipment_name) &
-            (df_orders["Termék neve"] == vals[1]) &
-            (df_orders["Lot szám"] == vals[2]) &
-            (df_orders["Mennyiség"] == vals[3])
-            ].index
 
-        if not filtered_idx.empty:
-            df_orders = df_orders.drop(filtered_idx[0])
-            save_sheet_data("Megrendelesek", df_orders)
-            self.log_action(f"Tétel eltávolítva a szállítmányból: {current_shipment_name} -> {vals[1]}")
-            self.refresh_current_shipment_view()
-            self.refresh_osszekeszi_view()
+        if not hasattr(self, "temp_shipment_items") or not self.temp_shipment_items:
+            messagebox.showwarning("Figyelmeztetés", "Nincs tétel ebben a szállítmányban!",
+                                   parent=self.tab_admin_szallitas)
+            return
+
+        df_orders = load_sheet_data("Megrendelesek")
+        new_orders_df = pd.DataFrame(self.temp_shipment_items)
+        save_sheet_data("Megrendelesek", pd.concat([df_orders, new_orders_df], ignore_index=True))
+
+        for item in self.temp_shipment_items:
+            self.log_action(f"Szállítmányba ({current_shipment_name}) tételt helyezve: {item['Beszállító']} - {item['Termék neve']} (Mennyiség: {item['Mennyiség']})")
+
+        self.refresh_osszekeszi_view()
+        self.log_action(f"Szállítmány továbbítva összekészítésre: {current_shipment_name}")
+        messagebox.showinfo("Siker",
+                            f"A(z) '{current_shipment_name}' szállítmány sikeresen átkerült az Áru Összekészítés (Kimenő) fülre!",
+                            parent=self.tab_admin_szallitas)
+
+        # Ürítjük az ideiglenes listát
+        self.temp_shipment_items = []
+        self.refresh_current_shipment_view()
+
+        # Frissítés a következő biztonságos, szabad sorszámra
+        self.admin_shipment_name_entry.delete(0, "end")
+        self.admin_shipment_name_entry.insert(0, self.get_auto_shipment_name())
 
     # --- 3. ÁRU ÖSSZEKÉSZÍTÉS FÜL ---
     def build_osszekeszi_tab(self):
@@ -798,14 +880,13 @@ class KeszletApp(ctk.CTk):
         ctk.CTkLabel(input_frame, text="Vevő / Cég neve (hova szállítjuk):").pack(anchor="w", padx=10, pady=(5, 0))
         e_vevo = ctk.CTkEntry(input_frame, width=570)
         e_vevo.pack(padx=10, pady=5)
-        default_besz = items_list[0][1] if items_list else "Novotic Kft."
-        e_vevo.insert(0, default_besz)
+        e_vevo.insert(0, "Novotic Kft.")
 
         ctk.CTkLabel(input_frame, text="Beszállító (mint cégnév):").pack(anchor="w", padx=10, pady=(5, 0))
         e_beszallito = ctk.CTkEntry(input_frame, width=570)
         e_beszallito.pack(padx=10, pady=5)
         default_besz = items_list[0][1] if items_list else "Novotic Kft."
-        e_beszallito.insert(0, "Novotic Kft.")
+        e_beszallito.insert(0, default_besz)
 
         content_frame = ctk.CTkFrame(preview_win, fg_color="white", corner_radius=6)
         content_frame.pack(fill="both", expand=True, padx=20, pady=10)
@@ -917,6 +998,10 @@ class KeszletApp(ctk.CTk):
                     self.refresh_kiadas_view()
                 if hasattr(self, "refresh_admin_szallitas_view"):
                     self.refresh_admin_szallitas_view()
+                    # Frissítsük az admin fülön is a beviteli mezőt a következő szabad azonosítóra
+                    if hasattr(self, "admin_shipment_name_entry"):
+                        self.admin_shipment_name_entry.delete(0, "end")
+                        self.admin_shipment_name_entry.insert(0, self.get_auto_shipment_name())
 
                 html_content = f"""
                         <!DOCTYPE html>
