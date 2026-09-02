@@ -798,13 +798,14 @@ class KeszletApp(ctk.CTk):
         ctk.CTkLabel(input_frame, text="Vevő / Cég neve (hova szállítjuk):").pack(anchor="w", padx=10, pady=(5, 0))
         e_vevo = ctk.CTkEntry(input_frame, width=570)
         e_vevo.pack(padx=10, pady=5)
-        e_vevo.insert(0, "Novotic Kft.")
+        default_besz = items_list[0][1] if items_list else "Novotic Kft."
+        e_vevo.insert(0, default_besz)
 
         ctk.CTkLabel(input_frame, text="Beszállító (mint cégnév):").pack(anchor="w", padx=10, pady=(5, 0))
         e_beszallito = ctk.CTkEntry(input_frame, width=570)
         e_beszallito.pack(padx=10, pady=5)
         default_besz = items_list[0][1] if items_list else "Novotic Kft."
-        e_beszallito.insert(0, default_besz)
+        e_beszallito.insert(0, "Novotic Kft.")
 
         content_frame = ctk.CTkFrame(preview_win, fg_color="white", corner_radius=6)
         content_frame.pack(fill="both", expand=True, padx=20, pady=10)
