@@ -584,6 +584,17 @@ class KeszletApp(ctk.CTk):
         left_pane = ctk.CTkFrame(split_container)
         left_pane.pack(side="left", fill="both", expand=True, padx=(0, 5), pady=0)
 
+        # Keresőmező hozzáadása a bal oldali táblázathoz
+        admin_search_frame = ctk.CTkFrame(left_pane, fg_color="transparent")
+        admin_search_frame.pack(fill="x", padx=5, pady=2)
+
+        self.admin_search_entry = ctk.CTkEntry(admin_search_frame, placeholder_text="Keresés (Beszállító / Név / Lot)...", width=200)
+        self.admin_search_entry.pack(side="left", padx=2, pady=2)
+        self.admin_search_entry.bind("<KeyRelease>", lambda e: self.refresh_admin_szallitas_view())
+
+        btn_admin_search_reset = ctk.CTkButton(admin_search_frame, text="Összes", command=self.reset_admin_search, fg_color="gray", width=70)
+        btn_admin_search_reset.pack(side="left", padx=2, pady=2)
+
         ctk.CTkLabel(left_pane, text="1. Válassz terméket a készletből:", font=("Arial", 12, "bold")).pack(anchor="w",
                                                                                                            padx=5,
                                                                                                            pady=5)
@@ -654,6 +665,11 @@ class KeszletApp(ctk.CTk):
 
         self.refresh_admin_szallitas_view()
 
+    def reset_admin_search(self):
+        if hasattr(self, "admin_search_entry"):
+            self.admin_search_entry.delete(0, "end")
+            self.refresh_admin_szallitas_view()
+
     def refresh_admin_szallitas_view(self):
         if not hasattr(self, "admin_keszlet_tree"):
             return
@@ -669,6 +685,13 @@ class KeszletApp(ctk.CTk):
         df = load_sheet_data("Keszlet")
         if df.empty:
             return
+
+        # Keresési szűrés alkalmazása
+        if hasattr(self, "admin_search_entry"):
+            query = self.admin_search_entry.get().strip().lower()
+            if query:
+                mask = df.astype(str).apply(lambda x: x.str.lower().str.contains(query)).any(axis=1)
+                df = df[mask]
 
         item_map = {}
         for _, row in df.iterrows():
