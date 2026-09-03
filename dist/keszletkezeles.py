@@ -183,19 +183,16 @@ class KeszletApp(ctk.CTk):
     def is_shipment_name_taken(self, name):
         if not name:
             return False
-        # 1. Ellenőrzés a Megrendelesek táblában (aktív összekészítések)
         df_orders = load_sheet_data("Megrendelesek")
         if not df_orders.empty and "Szallitmany_Nev" in df_orders.columns:
             if name in df_orders["Szallitmany_Nev"].values:
                 return True
 
-        # 2. Ellenőrzés a Kiadasok táblában (már kiszállított / véglegesített tételek)
         df_kiadas = load_sheet_data("Kiadasok")
         if not df_kiadas.empty and "Megjegyzés" in df_kiadas.columns:
             if df_kiadas["Megjegyzés"].astype(str).str.contains(name).any():
                 return True
 
-        # 3. Ellenőrzés a központi adatbázisban lévő lefoglalt sorszámok táblájában
         df_hasznalt = load_sheet_data("HasznaltSzallitmanyok")
         if not df_hasznalt.empty and "Szallitmany_Nev" in df_hasznalt.columns:
             if name in df_hasznalt["Szallitmany_Nev"].values:
@@ -285,6 +282,12 @@ class KeszletApp(ctk.CTk):
     def refresh_keszlet_view(self):
         if not hasattr(self, "keszlet_tree"):
             return
+
+        # Jelenlegi kijelölés mentése (ID alapján)
+        selected_items = self.keszlet_tree.selection()
+        selected_ids = [self.keszlet_tree.item(item, "values")[0] for item in selected_items if
+                        self.keszlet_tree.item(item, "values")]
+
         for row in self.keszlet_tree.get_children():
             self.keszlet_tree.delete(row)
 
@@ -297,6 +300,7 @@ class KeszletApp(ctk.CTk):
             mask = df.astype(str).apply(lambda x: x.str.lower().str.contains(query)).any(axis=1)
             df = df[mask]
 
+        item_map = {}
         for _, row in df.iterrows():
             qty = row.get("Mennyiség", "0")
             try:
@@ -304,11 +308,18 @@ class KeszletApp(ctk.CTk):
             except ValueError:
                 pass
 
-            self.keszlet_tree.insert("", "end", values=(
-                row.get("ID", ""), row.get("Beszállító", ""), row.get("Termék neve", ""),
+            row_id = str(row.get("ID", ""))
+            tree_item = self.keszlet_tree.insert("", "end", values=(
+                row_id, row.get("Beszállító", ""), row.get("Termék neve", ""),
                 row.get("Lot szám", ""), row.get("Gyártás ideje", ""), row.get("Lejárat", ""),
                 qty, row.get("Megjegyzés", "")
             ))
+            item_map[row_id] = tree_item
+
+        # Kijelölés visszaállítása
+        new_selection = [item_map[s_id] for s_id in selected_ids if s_id in item_map]
+        if new_selection:
+            self.keszlet_tree.selection_set(new_selection)
 
     def reset_keszlet_search(self):
         self.search_entry.delete(0, "end")
@@ -646,15 +657,33 @@ class KeszletApp(ctk.CTk):
     def refresh_admin_szallitas_view(self):
         if not hasattr(self, "admin_keszlet_tree"):
             return
+
+        # Jelenlegi kijelölés mentése (ID alapján)
+        selected_items = self.admin_keszlet_tree.selection()
+        selected_ids = [self.admin_keszlet_tree.item(item, "values")[0] for item in selected_items if
+                        self.admin_keszlet_tree.item(item, "values")]
+
         for row in self.admin_keszlet_tree.get_children():
             self.admin_keszlet_tree.delete(row)
+
         df = load_sheet_data("Keszlet")
         if df.empty:
             return
+
+        item_map = {}
         for _, row in df.iterrows():
-            self.admin_keszlet_tree.insert("", "end", values=(
-                row.get("ID", ""), row.get("Beszállító", ""), row.get("Termék neve", ""), row.get("Lot szám", ""),
-                row.get("Mennyiség", "")))
+            row_id = str(row.get("ID", ""))
+            tree_item = self.admin_keszlet_tree.insert("", "end", values=(
+                row_id, row.get("Beszállító", ""), row.get("Termék neve", ""), row.get("Lot szám", ""),
+                row.get("Mennyiség", "")
+            ))
+            item_map[row_id] = tree_item
+
+        # Kijelölés visszaállítása
+        new_selection = [item_map[s_id] for s_id in selected_ids if s_id in item_map]
+        if new_selection:
+            self.admin_keszlet_tree.selection_set(new_selection)
+
         self.refresh_current_shipment_view()
 
     def refresh_current_shipment_view(self):
@@ -756,7 +785,6 @@ class KeszletApp(ctk.CTk):
         new_orders_df = pd.DataFrame(self.temp_shipment_items)
         save_sheet_data("Megrendelesek", pd.concat([df_orders, new_orders_df], ignore_index=True))
 
-        # Központi táblába mentés, hogy a sorszám le legyen foglalva
         df_hasznalt = load_sheet_data("HasznaltSzallitmanyok")
         if df_hasznalt.empty:
             df_hasznalt = pd.DataFrame(columns=["Szallitmany_Nev"])
@@ -1047,7 +1075,6 @@ class KeszletApp(ctk.CTk):
                 save_sheet_data("Keszlet", df_keszlet)
                 save_sheet_data("Kiadasok", df_kiadas)
 
-                # Központi táblába mentés véglegesítéskor is biztosítékként
                 df_hasznalt = load_sheet_data("HasznaltSzallitmanyok")
                 if df_hasznalt.empty:
                     df_hasznalt = pd.DataFrame(columns=["Szallitmany_Nev"])
@@ -1142,12 +1169,10 @@ class KeszletApp(ctk.CTk):
         columns = ("Időpont", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felhasználó", "Megjegyzés")
         self.kiadas_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
-        # Itt lett hozzáadva a stretch=False, hogy a vízszintes görgetés működjön
         for col in columns:
             self.kiadas_tree.heading(col, text=col)
             self.kiadas_tree.column(col, width=150, stretch=False)
 
-        # Függőleges és vízszintes görgetősávok beállítása
         scrollbar_y = ttk.Scrollbar(table_frame, orient="vertical", command=self.kiadas_tree.yview)
         scrollbar_x = ttk.Scrollbar(table_frame, orient="horizontal", command=self.kiadas_tree.xview)
 
