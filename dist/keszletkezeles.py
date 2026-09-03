@@ -183,15 +183,24 @@ class KeszletApp(ctk.CTk):
     def is_shipment_name_taken(self, name):
         if not name:
             return False
+        # 1. Ellenőrzés a Megrendelesek táblában (aktív összekészítések)
         df_orders = load_sheet_data("Megrendelesek")
         if not df_orders.empty and "Szallitmany_Nev" in df_orders.columns:
             if name in df_orders["Szallitmany_Nev"].values:
                 return True
-        save_dir = os.path.join(os.getcwd(), "szallitolevelek")
-        if os.path.exists(save_dir):
-            for fname in os.listdir(save_dir):
-                if name in fname:
-                    return True
+
+        # 2. Ellenőrzés a Kiadasok táblában (már kiszállított / véglegesített tételek)
+        df_kiadas = load_sheet_data("Kiadasok")
+        if not df_kiadas.empty and "Megjegyzés" in df_kiadas.columns:
+            if df_kiadas["Megjegyzés"].astype(str).str.contains(name).any():
+                return True
+
+        # 3. Ellenőrzés a központi adatbázisban lévő lefoglalt sorszámok táblájában
+        df_hasznalt = load_sheet_data("HasznaltSzallitmanyok")
+        if not df_hasznalt.empty and "Szallitmany_Nev" in df_hasznalt.columns:
+            if name in df_hasznalt["Szallitmany_Nev"].values:
+                return True
+
         return False
 
     def get_auto_shipment_name(self):
@@ -257,7 +266,8 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-        "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség", "Megjegyzés")
+            "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség",
+            "Megjegyzés")
         self.keszlet_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
         for col in columns:
@@ -746,6 +756,14 @@ class KeszletApp(ctk.CTk):
         new_orders_df = pd.DataFrame(self.temp_shipment_items)
         save_sheet_data("Megrendelesek", pd.concat([df_orders, new_orders_df], ignore_index=True))
 
+        # Központi táblába mentés, hogy a sorszám le legyen foglalva
+        df_hasznalt = load_sheet_data("HasznaltSzallitmanyok")
+        if df_hasznalt.empty:
+            df_hasznalt = pd.DataFrame(columns=["Szallitmany_Nev"])
+        if current_shipment_name not in df_hasznalt["Szallitmany_Nev"].values:
+            new_h = pd.DataFrame([{"Szallitmany_Nev": current_shipment_name}])
+            save_sheet_data("HasznaltSzallitmanyok", pd.concat([df_hasznalt, new_h], ignore_index=True))
+
         for item in self.temp_shipment_items:
             self.log_action(
                 f"Szállítmányba ({current_shipment_name}) tételt helyezve: {item['Beszállító']} - {item['Termék neve']} (Mennyiség: {item['Mennyiség']})")
@@ -771,8 +789,8 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-        "Kijelölve", "Szállítmány Neve", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felvétel Napja",
-        "Idősáv", "Megjegyzés", "Állapot")
+            "Kijelölve", "Szállítmány Neve", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felvétel Napja",
+            "Idősáv", "Megjegyzés", "Állapot")
         self.osszekeszi_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
         self.osszekeszi_tree.tag_configure("checked", background="#d4edda")
@@ -1029,6 +1047,14 @@ class KeszletApp(ctk.CTk):
                 save_sheet_data("Keszlet", df_keszlet)
                 save_sheet_data("Kiadasok", df_kiadas)
 
+                # Központi táblába mentés véglegesítéskor is biztosítékként
+                df_hasznalt = load_sheet_data("HasznaltSzallitmanyok")
+                if df_hasznalt.empty:
+                    df_hasznalt = pd.DataFrame(columns=["Szallitmany_Nev"])
+                if default_shipment_name not in df_hasznalt["Szallitmany_Nev"].values:
+                    new_h = pd.DataFrame([{"Szallitmany_Nev": default_shipment_name}])
+                    save_sheet_data("HasznaltSzallitmanyok", pd.concat([df_hasznalt, new_h], ignore_index=True))
+
                 self.refresh_osszekeszi_view()
                 self.refresh_keszlet_view()
                 if hasattr(self, "refresh_kiadas_view"):
@@ -1099,8 +1125,8 @@ class KeszletApp(ctk.CTk):
         if messagebox.askyesno("Törlés", "Biztosan törlöd ezt a megrendelést az összekészítési listáról?"):
             df = load_sheet_data("Megrendelesek")
             df = df[~((df["Szallitmany_Nev"] == item_values[1]) & (df["Beszállító"] == item_values[2]) & (
-                        df["Termék neve"] == item_values[3]) & (df["Lot szám"] == item_values[4]) & (
-                                  df["Mennyiség"] == item_values[5]))]
+                    df["Termék neve"] == item_values[3]) & (df["Lot szám"] == item_values[4]) & (
+                              df["Mennyiség"] == item_values[5]))]
             save_sheet_data("Megrendelesek", df)
             self.log_action(f"Megrendelés törölve az összekészítésből: {item_values[1]} -> {item_values[3]}")
             self.refresh_osszekeszi_view()
