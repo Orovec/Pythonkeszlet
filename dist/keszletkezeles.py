@@ -65,6 +65,7 @@ class KeszletApp(ctk.CTk):
     def build_login_screen(self):
         self.clear_window()
         self.geometry("400x350")
+        self.resizable(False, False)
         self.title("Készletnyilvántartás - Bejelentkezés")
 
         self.label_title = ctk.CTkLabel(self, text="Rendszer Bejelentkezés", font=("Arial", 20, "bold"))
@@ -103,21 +104,38 @@ class KeszletApp(ctk.CTk):
                 pass
             self.build_login_screen()
 
+    def toggle_fullscreen(self, event=None):
+        """Teljes képernyős mód váltása F11 billentyűvel."""
+        current_state = self.attributes("-fullscreen")
+        self.attributes("-fullscreen", not current_state)
+
     def start_main_app(self, username, role):
         self.username = username
         self.role = role
         self.temp_shipment_items = []
 
         self.clear_window()
+
+        self.resizable(True, True)
         self.geometry("1200x700")
+
+        try:
+            self.state('zoomed')
+        except Exception:
+            try:
+                self.attributes('-zoomed', True)
+            except Exception:
+                pass
+
+        self.bind("<F11>", self.toggle_fullscreen)
+
         self.title(f"Készletnyilvántartás - Bejelentkezve: {self.username} ({self.role.upper()})")
 
-        # Felső keret a címsornak és a kijelentkezés gombnak
         top_bar = ctk.CTkFrame(self, fg_color="transparent")
         top_bar.pack(fill="x", padx=10, pady=5)
 
         app_title_label = ctk.CTkLabel(top_bar,
-                                       text=f"Készletnyilvántartás - Felhasználó: {self.username} ({self.role.upper()})",
+                                       text=f"Készletnyilvántartás - Felhasználó: {self.username} ({self.role.upper()}) [F11: Teljes képernyő]",
                                        font=("Arial", 14, "bold"))
         app_title_label.pack(side="left", padx=5)
 
@@ -148,13 +166,10 @@ class KeszletApp(ctk.CTk):
             self.build_naplo_tab()
             self.build_users_tab()
 
-        # Automatikus frissítések indítása
         self.start_auto_refresh()
-
         self.log_action("Bejelentkezés a rendszerbe")
 
     def start_auto_refresh(self):
-        """5 másodpercenként automatikusan frissíti a Készlet és az Admin Kiszállítás táblázatát is."""
         try:
             if hasattr(self, "keszlet_tree") and self.keszlet_tree.winfo_exists():
                 self.refresh_keszlet_view()
@@ -226,7 +241,6 @@ class KeszletApp(ctk.CTk):
             return True
         return False
 
-    # --- 1. KÉSZLET & KERESÉS FÜL ---
     def build_keszlet_tab(self):
         control_frame = ctk.CTkFrame(self.tab_keszlet)
         control_frame.pack(fill="x", padx=10, pady=10)
@@ -263,8 +277,7 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-            "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség",
-            "Megjegyzés")
+        "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség", "Megjegyzés")
         self.keszlet_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
         for col in columns:
@@ -283,7 +296,6 @@ class KeszletApp(ctk.CTk):
         if not hasattr(self, "keszlet_tree"):
             return
 
-        # Jelenlegi kijelölés mentése (ID alapján)
         selected_items = self.keszlet_tree.selection()
         selected_ids = [self.keszlet_tree.item(item, "values")[0] for item in selected_items if
                         self.keszlet_tree.item(item, "values")]
@@ -316,7 +328,6 @@ class KeszletApp(ctk.CTk):
             ))
             item_map[row_id] = tree_item
 
-        # Kijelölés visszaállítása
         new_selection = [item_map[s_id] for s_id in selected_ids if s_id in item_map]
         if new_selection:
             self.keszlet_tree.selection_set(new_selection)
@@ -552,7 +563,6 @@ class KeszletApp(ctk.CTk):
         ctk.CTkButton(win, text="Kiadás rögzítése", command=confirm_shipment, fg_color="darkorange", width=200).pack(
             pady=20)
 
-    # --- 2. ADMIN KISZÁLLÍTÁS FÜL ---
     def build_admin_szallitas_tab(self):
         ctk.CTkLabel(self.tab_admin_szallitas, text="Szállítmányok összeállítása (Csoportosított rendelések)",
                      font=("Arial", 16, "bold")).pack(pady=5)
@@ -584,15 +594,16 @@ class KeszletApp(ctk.CTk):
         left_pane = ctk.CTkFrame(split_container)
         left_pane.pack(side="left", fill="both", expand=True, padx=(0, 5), pady=0)
 
-        # Keresőmező hozzáadása a bal oldali táblázathoz
         admin_search_frame = ctk.CTkFrame(left_pane, fg_color="transparent")
         admin_search_frame.pack(fill="x", padx=5, pady=2)
 
-        self.admin_search_entry = ctk.CTkEntry(admin_search_frame, placeholder_text="Keresés (Beszállító / Név / Lot)...", width=200)
+        self.admin_search_entry = ctk.CTkEntry(admin_search_frame,
+                                               placeholder_text="Keresés (Beszállító / Név / Lot)...", width=200)
         self.admin_search_entry.pack(side="left", padx=2, pady=2)
         self.admin_search_entry.bind("<KeyRelease>", lambda e: self.refresh_admin_szallitas_view())
 
-        btn_admin_search_reset = ctk.CTkButton(admin_search_frame, text="Összes", command=self.reset_admin_search, fg_color="gray", width=70)
+        btn_admin_search_reset = ctk.CTkButton(admin_search_frame, text="Összes", command=self.reset_admin_search,
+                                               fg_color="gray", width=70)
         btn_admin_search_reset.pack(side="left", padx=2, pady=2)
 
         ctk.CTkLabel(left_pane, text="1. Válassz terméket a készletből:", font=("Arial", 12, "bold")).pack(anchor="w",
@@ -674,7 +685,6 @@ class KeszletApp(ctk.CTk):
         if not hasattr(self, "admin_keszlet_tree"):
             return
 
-        # Jelenlegi kijelölés mentése (ID alapján)
         selected_items = self.admin_keszlet_tree.selection()
         selected_ids = [self.admin_keszlet_tree.item(item, "values")[0] for item in selected_items if
                         self.admin_keszlet_tree.item(item, "values")]
@@ -686,7 +696,6 @@ class KeszletApp(ctk.CTk):
         if df.empty:
             return
 
-        # Keresési szűrés alkalmazása
         if hasattr(self, "admin_search_entry"):
             query = self.admin_search_entry.get().strip().lower()
             if query:
@@ -702,7 +711,6 @@ class KeszletApp(ctk.CTk):
             ))
             item_map[row_id] = tree_item
 
-        # Kijelölés visszaállítása
         new_selection = [item_map[s_id] for s_id in selected_ids if s_id in item_map]
         if new_selection:
             self.admin_keszlet_tree.selection_set(new_selection)
@@ -831,7 +839,6 @@ class KeszletApp(ctk.CTk):
         self.admin_shipment_name_entry.delete(0, "end")
         self.admin_shipment_name_entry.insert(0, self.get_auto_shipment_name())
 
-    # --- 3. ÁRU ÖSSZEKÉSZÍTÉS FÜL ---
     def build_osszekeszi_tab(self):
         ctk.CTkLabel(self.tab_osszekeszi, text="Kimenő áruk összekészítése (Szállítmányok szerinti csoportosítás)",
                      font=("Arial", 16, "bold")).pack(pady=10)
@@ -840,8 +847,8 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-            "Kijelölve", "Szállítmány Neve", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felvétel Napja",
-            "Idősáv", "Megjegyzés", "Állapot")
+        "Kijelölve", "Szállítmány Neve", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felvétel Napja",
+        "Idősáv", "Megjegyzés", "Állapot")
         self.osszekeszi_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
         self.osszekeszi_tree.tag_configure("checked", background="#d4edda")
@@ -1175,13 +1182,12 @@ class KeszletApp(ctk.CTk):
         if messagebox.askyesno("Törlés", "Biztosan törlöd ezt a megrendelést az összekészítési listáról?"):
             df = load_sheet_data("Megrendelesek")
             df = df[~((df["Szallitmany_Nev"] == item_values[1]) & (df["Beszállító"] == item_values[2]) & (
-                    df["Termék neve"] == item_values[3]) & (df["Lot szám"] == item_values[4]) & (
-                              df["Mennyiség"] == item_values[5]))]
+                        df["Termék neve"] == item_values[3]) & (df["Lot szám"] == item_values[4]) & (
+                                  df["Mennyiség"] == item_values[5]))]
             save_sheet_data("Megrendelesek", df)
             self.log_action(f"Megrendelés törölve az összekészítésből: {item_values[1]} -> {item_values[3]}")
             self.refresh_osszekeszi_view()
 
-    # --- 4. KIADÁSOK / ELŐZMÉNYEK FÜL ---
     def build_kiadas_tab(self):
         ctk.CTkLabel(self.tab_kiadas, text="Korábbi kiadások / Kiszállítások előzményei",
                      font=("Arial", 16, "bold")).pack(pady=10)
@@ -1227,7 +1233,6 @@ class KeszletApp(ctk.CTk):
                 row.get("Lot szám", ""), row.get("Mennyiség", ""), row.get("Felhasználó", ""), row.get("Megjegyzés", "")
             ))
 
-    # --- 5. FEJLESZTÉSI JAVASLATOK FÜL ---
     def build_javaslatok_tab(self):
         ctk.CTkLabel(self.tab_javaslatok, text="Fejlesztési javaslatok beküldése és kezelése",
                      font=("Arial", 16, "bold")).pack(pady=10)
@@ -1365,7 +1370,6 @@ class KeszletApp(ctk.CTk):
                 row.get("ID", ""), row.get("Felhasznalo", ""), row.get("Idopont", ""), row.get("Javaslat", "")
             ))
 
-    # --- 6. NAPLÓ FÜL ---
     def build_naplo_tab(self):
         ctk.CTkLabel(self.tab_naplo, text="Rendszerszintű eseménynapló", font=("Arial", 16, "bold")).pack(pady=10)
         table_frame = ctk.CTkFrame(self.tab_naplo)
@@ -1395,7 +1399,6 @@ class KeszletApp(ctk.CTk):
             self.naplo_tree.insert("", "end",
                                    values=(row.get("Idopont", ""), row.get("Felhasználó", ""), row.get("Muvelet", "")))
 
-    # --- 7. FELHASZNÁLÓ KEZELÉS FÜL ---
     def build_users_tab(self):
         ctk.CTkLabel(self.tab_users, text="Rendszerfelhasználók kezelése", font=("Arial", 16, "bold")).pack(pady=10)
 
