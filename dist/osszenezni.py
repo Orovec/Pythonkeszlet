@@ -127,7 +127,7 @@ class KeszletApp(ctk.CTk):
             except Exception:
                 pass
 
-        self.bind("<F11>", self.toggle_fullscreen)
+        self.bind("", self.toggle_fullscreen)
 
         self.title(f"Készletnyilvántartás - Bejelentkezve: {self.username} ({self.role.upper()})")
 
@@ -259,10 +259,10 @@ class KeszletApp(ctk.CTk):
         if self.role in ["admin", "vezető"]:
             btn_del = ctk.CTkButton(control_frame, text="Kijelölt törlése", command=self.delete_product, fg_color="red")
             btn_del.pack(side="right", padx=5, pady=5)
+
             btn_edit = ctk.CTkButton(control_frame, text="Kijelölt szerkesztése", command=self.open_edit_product_window,
                                      fg_color="darkorange")
             btn_edit.pack(side="right", padx=5, pady=5)
-
 
         if self.role == "admin":
             btn_export = ctk.CTkButton(control_frame, text="📥 CSV Export", command=self.export_products_csv,
@@ -281,7 +281,8 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-        "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség", "Megjegyzés")
+            "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség",
+            "Megjegyzés")
         self.keszlet_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
         for col in columns:
@@ -593,6 +594,7 @@ class KeszletApp(ctk.CTk):
                 messagebox.showerror("Hiba", "Adatbázis hiba!", parent=win)
 
         ctk.CTkButton(win, text="Módosítások mentése", command=save_edited, fg_color="green", width=200).pack(pady=20)
+
     def delete_product(self):
         if self.role not in ["admin", "vezető"]:
             messagebox.showerror("Jogosultság hiba", "Nincs jogosultságod!")
@@ -707,8 +709,8 @@ class KeszletApp(ctk.CTk):
                                                       width=170)
         self.admin_shipment_name_entry.pack(side="left", padx=5)
         self.admin_shipment_name_entry.insert(0, self.get_auto_shipment_name())
-        self.admin_shipment_name_entry.bind("<KeyRelease>", lambda e: self.refresh_current_shipment_view())
-        self.admin_shipment_name_entry.bind("<FocusOut>", self.check_shipment_name_validity)
+        self.admin_shipment_name_entry.bind("", lambda e: self.refresh_current_shipment_view())
+        self.admin_shipment_name_entry.bind("", self.check_shipment_name_validity)
 
         ctk.CTkLabel(shipment_group_frame, text="Dátum:").pack(side="left", padx=(10, 2))
         self.admin_date_entry = ctk.CTkEntry(shipment_group_frame, width=90)
@@ -731,7 +733,7 @@ class KeszletApp(ctk.CTk):
         self.admin_search_entry = ctk.CTkEntry(admin_search_frame,
                                                placeholder_text="Keresés (Beszállító / Név / Lot)...", width=200)
         self.admin_search_entry.pack(side="left", padx=2, pady=2)
-        self.admin_search_entry.bind("<KeyRelease>", lambda e: self.refresh_admin_szallitas_view())
+        self.admin_search_entry.bind("", lambda e: self.refresh_admin_szallitas_view())
 
         btn_admin_search_reset = ctk.CTkButton(admin_search_frame, text="Összes", command=self.reset_admin_search,
                                                fg_color="gray", width=70)
@@ -978,8 +980,8 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-        "Kijelölve", "Szállítmány Neve", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felvétel Napja",
-        "Idősáv", "Megjegyzés", "Állapot")
+            "Kijelölve", "Szállítmány Neve", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felvétel Napja",
+            "Idősáv", "Megjegyzés", "Állapot")
         self.osszekeszi_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
         self.osszekeszi_tree.tag_configure("checked", background="#d4edda")
@@ -996,7 +998,7 @@ class KeszletApp(ctk.CTk):
         self.osszekeszi_tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        self.osszekeszi_tree.bind("<Button-1>", self.on_osszekeszi_click)
+        self.osszekeszi_tree.bind("", self.on_osszekeszi_click)
 
         btn_frame = ctk.CTkFrame(self.tab_osszekeszi)
         btn_frame.pack(fill="x", padx=10, pady=10)
@@ -1177,9 +1179,9 @@ class KeszletApp(ctk.CTk):
             text_box.delete("1.0", "end")
             text_box.insert("1.0", doc_text)
 
-        e_szallitmany.bind("<KeyRelease>", update_text_content)
-        e_vevo.bind("<KeyRelease>", update_text_content)
-        e_beszallito.bind("<KeyRelease>", update_text_content)
+        e_szallitmany.bind("", update_text_content)
+        e_vevo.bind("", update_text_content)
+        e_beszallito.bind("", update_text_content)
         update_text_content()
 
         btn_frame = ctk.CTkFrame(preview_win, fg_color="transparent")
@@ -1254,19 +1256,17 @@ class KeszletApp(ctk.CTk):
                         self.admin_shipment_name_entry.insert(0, self.get_auto_shipment_name())
 
                 html_content = f"""
-                        <!DOCTYPE html>
-                        <html lang="hu">
-                        <head>
-                            <meta charset="UTF-8">
-                            <title>Szállítólevél</title>
-                            <style>
-                                body {{ font-family: monospace; white-space: pre-wrap; margin: 20px; font-size: 14px; }}
-                            </style>
-                        </head>
-                        <body onload="window.print();">
+
+
+
+
+                            Szállítólevél
+
+
+
                         {text_box.get("1.0", "end")}
-                        </body>
-                        </html>
+
+
                         """
 
                 import re
@@ -1313,8 +1313,8 @@ class KeszletApp(ctk.CTk):
         if messagebox.askyesno("Törlés", "Biztosan törlöd ezt a megrendelést az összekészítési listáról?"):
             df = load_sheet_data("Megrendelesek")
             df = df[~((df["Szallitmany_Nev"] == item_values[1]) & (df["Beszállító"] == item_values[2]) & (
-                        df["Termék neve"] == item_values[3]) & (df["Lot szám"] == item_values[4]) & (
-                                  df["Mennyiség"] == item_values[5]))]
+                    df["Termék neve"] == item_values[3]) & (df["Lot szám"] == item_values[4]) & (
+                              df["Mennyiség"] == item_values[5]))]
             save_sheet_data("Megrendelesek", df)
             self.log_action(f"Megrendelés törölve az összekészítésből: {item_values[1]} -> {item_values[3]}")
             self.refresh_osszekeszi_view()
