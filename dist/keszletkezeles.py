@@ -260,6 +260,10 @@ class KeszletApp(ctk.CTk):
             btn_del = ctk.CTkButton(control_frame, text="Kijelölt törlése", command=self.delete_product, fg_color="red")
             btn_del.pack(side="right", padx=5, pady=5)
 
+            btn_edit = ctk.CTkButton(control_frame, text="Kijelölt szerkesztése", command=self.open_edit_product_window,
+                                     fg_color="darkorange")
+            btn_edit.pack(side="right", padx=5, pady=5)
+
         if self.role == "admin":
             btn_export = ctk.CTkButton(control_frame, text="📥 CSV Export", command=self.export_products_csv,
                                        fg_color="teal")
@@ -277,7 +281,8 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-        "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség", "Megjegyzés")
+            "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség",
+            "Megjegyzés")
         self.keszlet_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
         for col in columns:
@@ -462,6 +467,134 @@ class KeszletApp(ctk.CTk):
 
         ctk.CTkButton(win, text="Mentés", command=save_new, fg_color="green", width=200).pack(pady=20)
 
+    def open_edit_product_window(self):
+        """Admin/vezető funkció a meglévő készleten lévő termék adatainak szerkesztésére."""
+        if self.role not in ["admin", "vezető"]:
+            messagebox.showerror("Jogosultság hiba", "Nincs jogosultságod a szerkesztéshez!")
+            return
+
+        selected_item = self.keszlet_tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Figyelmeztetés", "Válassz ki egy elemet a szerkesztéshez!")
+            return
+
+        item_id, brand, name, lot, gyartas, lejarat, menny, megj = self.keszlet_tree.item(selected_item, "values")
+
+        win = ctk.CTkToplevel(self)
+        win.title("Termék / Cikk Szerkesztése")
+        win.geometry("400x600")
+        win.grab_set()
+        win.focus_set()
+
+        df_existing = load_sheet_data("Keszlet")
+        existing_brands = sorted(list(df_existing[
+                                          "Beszállító"].dropna().unique())) if not df_existing.empty and "Beszállító" in df_existing.columns else []
+        existing_names = sorted(list(df_existing[
+                                         "Termék neve"].dropna().unique())) if not df_existing.empty and "Termék neve" in df_existing.columns else []
+
+        ctk.CTkLabel(win, text="Beszállító (Brand):").pack(anchor="w", padx=20, pady=(10, 0))
+        e_brand = ctk.CTkComboBox(win, values=existing_brands, width=350)
+        e_brand.pack(padx=20, pady=5)
+        e_brand.set(brand)
+
+        ctk.CTkLabel(win, text="Termék neve:").pack(anchor="w", padx=20, pady=(10, 0))
+        e_name = ctk.CTkComboBox(win, values=existing_names, width=350)
+        e_name.pack(padx=20, pady=5)
+        e_name.set(name)
+
+        ctk.CTkLabel(win, text="Lot szám:").pack(anchor="w", padx=20, pady=(10, 0))
+        e_lot = ctk.CTkEntry(win, width=350)
+        e_lot.insert(0, lot)
+        e_lot.pack(padx=20, pady=5)
+
+        ctk.CTkLabel(win, text="Gyártás ideje (ÉÉÉÉ-HH-NN):").pack(anchor="w", padx=20, pady=(10, 0))
+        e_gyartas = ctk.CTkEntry(win, width=350)
+        e_gyartas.insert(0, gyartas)
+        e_gyartas.pack(padx=20, pady=5)
+
+        ctk.CTkLabel(win, text="Lejárati idő (ÉÉÉÉ-HH-NN):").pack(anchor="w", padx=20, pady=(10, 0))
+        date_frame = ctk.CTkFrame(win, fg_color="transparent")
+        date_frame.pack(padx=20, pady=5, fill="x")
+
+        e_lejarat = ctk.CTkEntry(date_frame, width=240)
+        e_lejarat.pack(side="left", padx=(0, 5))
+        e_lejarat.insert(0, lejarat)
+
+        def open_calendar():
+            cal_win = ctk.CTkToplevel(win)
+            cal_win.title("Válassz lejárati dátumot")
+            cal_win.geometry("300x300")
+            cal_win.grab_set()
+            cal = Calendar(cal_win, selectmode='day', year=datetime.date.today().year,
+                           month=datetime.date.today().month, day=datetime.date.today().day)
+            cal.pack(pady=10, fill="both", expand=True)
+
+            def set_date():
+                e_lejarat.delete(0, "end")
+                e_lejarat.insert(0, cal.selection_get().strftime("%Y-%m-%d"))
+                cal_win.destroy()
+
+            ctk.CTkButton(cal_win, text="Kiválasztás", command=set_date, fg_color="green").pack(pady=10)
+
+        ctk.CTkButton(date_frame, text="📅 Naptár", width=100, command=open_calendar).pack(side="right")
+
+        ctk.CTkLabel(win, text="Mennyiség (egész szám, min. 0):").pack(anchor="w", padx=20, pady=(10, 0))
+        e_mennyiseg = ctk.CTkEntry(win, width=350)
+        e_mennyiseg.insert(0, menny)
+        e_mennyiseg.pack(padx=20, pady=5)
+
+        ctk.CTkLabel(win, text="Megjegyzés:").pack(anchor="w", padx=20, pady=(10, 0))
+        e_megj = ctk.CTkEntry(win, width=350)
+        e_megj.insert(0, megj)
+        e_megj.pack(padx=20, pady=5)
+
+        def save_edited():
+            new_brand, new_name, new_lot, new_gyartas, new_lejarat, new_menny, new_megj = (
+                e_brand.get().strip(), e_name.get().strip(), e_lot.get().strip(),
+                e_gyartas.get().strip(), e_lejarat.get().strip(), e_mennyiseg.get().strip(), e_megj.get().strip()
+            )
+
+            if not new_brand or not new_name or not new_lot or not new_menny:
+                messagebox.showerror("Hiba", "Minden kötelező mezőt ki kell tölteni!", parent=win)
+                return
+
+            try:
+                menny_val = int(new_menny)
+            except ValueError:
+                messagebox.showerror("Hiba", "A mennyiség csak érvényes egész szám lehet!", parent=win)
+                return
+
+            if menny_val < 0:
+                messagebox.showerror("Hiba", "A mennyiség nem lehet negatív!", parent=win)
+                return
+
+            df = load_sheet_data("Keszlet")
+            if not df.empty and "ID" in df.columns:
+                idx = df[df["ID"].astype(str) == str(item_id)].index
+                if not idx.empty:
+                    i = idx[0]
+                    df.loc[i, "Beszállító"] = new_brand
+                    df.loc[i, "Termék neve"] = new_name
+                    df.loc[i, "Lot szám"] = new_lot
+                    df.loc[i, "Gyártás ideje"] = new_gyartas
+                    df.loc[i, "Lejárat"] = new_lejarat
+                    df.loc[i, "Mennyiség"] = str(menny_val)
+                    df.loc[i, "Megjegyzés"] = new_megj
+
+                    save_sheet_data("Keszlet", df)
+                    self.log_action(f"Termék szerkesztve: ID {item_id} ({new_brand} - {new_name})")
+                    self.refresh_keszlet_view()
+                    if hasattr(self, "refresh_admin_szallitas_view"):
+                        self.refresh_admin_szallitas_view()
+                    win.destroy()
+                    messagebox.showinfo("Siker", "A termék adatai sikeresen frissítve!", parent=self)
+                else:
+                    messagebox.showerror("Hiba", "A szerkesztendő elem nem található az adatbázisban!", parent=win)
+            else:
+                messagebox.showerror("Hiba", "Adatbázis hiba!", parent=win)
+
+        ctk.CTkButton(win, text="Módosítások mentése", command=save_edited, fg_color="green", width=200).pack(pady=20)
+
     def delete_product(self):
         if self.role not in ["admin", "vezető"]:
             messagebox.showerror("Jogosultság hiba", "Nincs jogosultságod!")
@@ -576,8 +709,8 @@ class KeszletApp(ctk.CTk):
                                                       width=170)
         self.admin_shipment_name_entry.pack(side="left", padx=5)
         self.admin_shipment_name_entry.insert(0, self.get_auto_shipment_name())
-        self.admin_shipment_name_entry.bind("<KeyRelease>", lambda e: self.refresh_current_shipment_view())
-        self.admin_shipment_name_entry.bind("<FocusOut>", self.check_shipment_name_validity)
+        self.admin_shipment_name_entry.bind("", lambda e: self.refresh_current_shipment_view())
+        self.admin_shipment_name_entry.bind("", self.check_shipment_name_validity)
 
         ctk.CTkLabel(shipment_group_frame, text="Dátum:").pack(side="left", padx=(10, 2))
         self.admin_date_entry = ctk.CTkEntry(shipment_group_frame, width=90)
@@ -600,7 +733,7 @@ class KeszletApp(ctk.CTk):
         self.admin_search_entry = ctk.CTkEntry(admin_search_frame,
                                                placeholder_text="Keresés (Beszállító / Név / Lot)...", width=200)
         self.admin_search_entry.pack(side="left", padx=2, pady=2)
-        self.admin_search_entry.bind("<KeyRelease>", lambda e: self.refresh_admin_szallitas_view())
+        self.admin_search_entry.bind("", lambda e: self.refresh_admin_szallitas_view())
 
         btn_admin_search_reset = ctk.CTkButton(admin_search_frame, text="Összes", command=self.reset_admin_search,
                                                fg_color="gray", width=70)
@@ -847,8 +980,8 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-        "Kijelölve", "Szállítmány Neve", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felvétel Napja",
-        "Idősáv", "Megjegyzés", "Állapot")
+            "Kijelölve", "Szállítmány Neve", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felvétel Napja",
+            "Idősáv", "Megjegyzés", "Állapot")
         self.osszekeszi_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
         self.osszekeszi_tree.tag_configure("checked", background="#d4edda")
@@ -865,7 +998,7 @@ class KeszletApp(ctk.CTk):
         self.osszekeszi_tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        self.osszekeszi_tree.bind("<Button-1>", self.on_osszekeszi_click)
+        self.osszekeszi_tree.bind("", self.on_osszekeszi_click)
 
         btn_frame = ctk.CTkFrame(self.tab_osszekeszi)
         btn_frame.pack(fill="x", padx=10, pady=10)
@@ -1046,9 +1179,9 @@ class KeszletApp(ctk.CTk):
             text_box.delete("1.0", "end")
             text_box.insert("1.0", doc_text)
 
-        e_szallitmany.bind("<KeyRelease>", update_text_content)
-        e_vevo.bind("<KeyRelease>", update_text_content)
-        e_beszallito.bind("<KeyRelease>", update_text_content)
+        e_szallitmany.bind("", update_text_content)
+        e_vevo.bind("", update_text_content)
+        e_beszallito.bind("", update_text_content)
         update_text_content()
 
         btn_frame = ctk.CTkFrame(preview_win, fg_color="transparent")
@@ -1123,19 +1256,17 @@ class KeszletApp(ctk.CTk):
                         self.admin_shipment_name_entry.insert(0, self.get_auto_shipment_name())
 
                 html_content = f"""
-                        <!DOCTYPE html>
-                        <html lang="hu">
-                        <head>
-                            <meta charset="UTF-8">
-                            <title>Szállítólevél</title>
-                            <style>
-                                body {{ font-family: monospace; white-space: pre-wrap; margin: 20px; font-size: 14px; }}
-                            </style>
-                        </head>
-                        <body onload="window.print();">
+
+
+
+
+                            Szállítólevél
+
+
+
                         {text_box.get("1.0", "end")}
-                        </body>
-                        </html>
+
+
                         """
 
                 import re
@@ -1182,8 +1313,8 @@ class KeszletApp(ctk.CTk):
         if messagebox.askyesno("Törlés", "Biztosan törlöd ezt a megrendelést az összekészítési listáról?"):
             df = load_sheet_data("Megrendelesek")
             df = df[~((df["Szallitmany_Nev"] == item_values[1]) & (df["Beszállító"] == item_values[2]) & (
-                        df["Termék neve"] == item_values[3]) & (df["Lot szám"] == item_values[4]) & (
-                                  df["Mennyiség"] == item_values[5]))]
+                    df["Termék neve"] == item_values[3]) & (df["Lot szám"] == item_values[4]) & (
+                              df["Mennyiség"] == item_values[5]))]
             save_sheet_data("Megrendelesek", df)
             self.log_action(f"Megrendelés törölve az összekészítésből: {item_values[1]} -> {item_values[3]}")
             self.refresh_osszekeszi_view()
