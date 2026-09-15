@@ -8,6 +8,7 @@ from tkcalendar import Calendar
 import tempfile
 import os
 import webbrowser
+import fuvar_module
 
 # --- Globális Beállítások ---
 ctk.set_appearance_mode("System")
@@ -112,6 +113,16 @@ class KeszletApp(ctk.CTk):
     def start_main_app(self, username, role):
         self.username = username
         self.role = role
+
+        # --- EZ HIÁNYZIK VAGY ROSSZUL VAN ELNEVEZVE! ---
+        # Létre kell hoznod a tabview-t, mielőtt füleket adnál hozzá:
+        self.tabview = ctk.CTkTabview(self)  # Vagy a megfelelő keret, amire teszed
+        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Példányosítjuk a külön fájlban lévő fuvar kezelőt
+
+        self.fuvar_manager = fuvar_module.FuvarManager(self)
+
         self.temp_shipment_items = []
 
         self.clear_window()
@@ -151,10 +162,15 @@ class KeszletApp(ctk.CTk):
         self.tab_kiadas = self.tabview.add("Előzmények (Kiadva)")
         self.tab_javaslatok = self.tabview.add("Fejlesztési javaslatok")
 
+        if self.role in ["admin"]:
+            self.tab_fuvar_szervezes = self.tabview.add("Fuvar szervezés")
+
         if self.role in ["admin", "vezető"]:
             self.tab_admin_szallitas = self.tabview.add("Admin Kiszállítás")
             self.tab_naplo = self.tabview.add("Napló")
             self.tab_users = self.tabview.add("Felhasználó kezelés")
+
+
 
         self.build_keszlet_tab()
         self.build_osszekeszi_tab()
@@ -165,7 +181,7 @@ class KeszletApp(ctk.CTk):
             self.build_admin_szallitas_tab()
             self.build_naplo_tab()
             self.build_users_tab()
-
+            self.build_fuvar_szervezes_tab()
         self.start_auto_refresh()
         self.log_action("Bejelentkezés a rendszerbe")
 
@@ -295,6 +311,11 @@ class KeszletApp(ctk.CTk):
         scrollbar.pack(side="right", fill="y")
 
         self.refresh_keszlet_view()
+
+    def build_fuvar_szervezes_tab(self):
+        """Átirányítja a fuvar szervezés fül felépítését a FuvarManager modulra."""
+        if hasattr(self, "fuvar_manager"):
+            self.fuvar_manager.build_fuvar_szervezes_tab(self.tab_fuvar_szervezes)
 
     def refresh_keszlet_view(self):
         if not hasattr(self, "keszlet_tree"):
@@ -1620,6 +1641,7 @@ class KeszletApp(ctk.CTk):
             save_sheet_data("Felhasznalok", df)
             self.log_action(f"Felhasználó törölve: {u_name}")
             self.refresh_users_view()
+
 
 
 if __name__ == "__main__":
