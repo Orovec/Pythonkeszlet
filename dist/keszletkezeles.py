@@ -9,36 +9,11 @@ import tempfile
 import os
 import webbrowser
 import fuvar_module
+from database_module import DatabaseManager
 
 # --- Globális Beállítások ---
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
-
-# A Neon adatbázis kapcsolati sztringje
-DATABASE_URL = "postgresql://neondb_owner:npg_CQUsD4m6FedP@ep-bold-shape-b27rwpzu-pooler.c-6.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
-engine = create_engine(DATABASE_URL)
-
-
-def load_sheet_data(table_name):
-    """Betölti egy adott nevű tábla tartalmát a Neon adatbázisból egy pandas DataFrame-be."""
-    try:
-        df = pd.read_sql(f'SELECT * "{table_name}"', engine)
-        return df.astype(str)
-    except Exception as e:
-        try:
-            df = pd.read_sql(f'SELECT * FROM "{table_name}"', engine)
-            return df.astype(str)
-        except:
-            return pd.DataFrame()
-
-
-def save_sheet_data(table_name, df):
-    """Elmenti a pandas DataFrame adatait közvetlenül a Neon adatbázisba."""
-    try:
-        df.to_sql(table_name, engine, if_exists="replace", index=False)
-    except Exception as e:
-        messagebox.showerror("Mentési hiba", f"Nem sikerült menteni az adatbázisba: {e}")
-
 
 # --- Fő Alkalmazás Osztály ---
 class KeszletApp(ctk.CTk):
@@ -47,17 +22,21 @@ class KeszletApp(ctk.CTk):
         self.title("Készletnyilvántartás - Bejelentkezés")
         self.geometry("400x350")
         self.resizable(False, False)
+        # Adatbázis kezelő példányosítása OOP módon
+
+        DATABASE_URL = "postgresql://neondb_owner:npg_CQUsD4m6FedP@ep-bold-shape-b27rwpzu-pooler.c-6.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+        self.db = DatabaseManager(DATABASE_URL)
 
         self.init_users_db()
         self.build_login_screen()
 
     def init_users_db(self):
-        df = load_sheet_data("Felhasznalok")
+        df = self.db.load_sheet_data("Felhasznalok")
         if df.empty:
             df = pd.DataFrame([
                 {"felhasznalo": "admin", "jelszo": "admin123", "szint": "admin"}
             ])
-            save_sheet_data("Felhasznalok", df)
+            self.db.save_sheet_data("Felhasznalok", df)
 
     def clear_window(self):
         for widget in self.winfo_children():
@@ -86,7 +65,7 @@ class KeszletApp(ctk.CTk):
         username = self.entry_user.get().strip()
         password = self.entry_pass.get().strip()
 
-        df = load_sheet_data("Felhasznalok")
+        df = self.db.load_sheet_data("Felhasznalok")
         if not df.empty and username in df["felhasznalo"].values:
             user_row = df[df["felhasznalo"] == username].iloc[0]
             if str(user_row["jelszo"]) == password:
@@ -181,6 +160,7 @@ class KeszletApp(ctk.CTk):
             self.build_admin_szallitas_tab()
             self.build_naplo_tab()
             self.build_users_tab()
+        if self.role=="admin":
             self.build_fuvar_szervezes_tab()
         self.start_auto_refresh()
         self.log_action("Bejelentkezés a rendszerbe")
@@ -201,12 +181,39 @@ class KeszletApp(ctk.CTk):
         self.after(5000, self.start_auto_refresh)
 
     def log_action(self, action):
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        new_log = pd.DataFrame([{"Idopont": timestamp, "Felhasznalo": self.username, "Muvelet": action}])
+        """Művelet naplózása időponttal és az aktuális felhasználó nevével."""
 
-        df = load_sheet_data("Naplo")
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Egységes oszlopnevek használata
+        new_log = pd.DataFrame([{
+            "Idopont": timestamp,
+            "Felhasználó": self.username,
+            "Muvelet": action
+        }])
+
+        df = self.db.load_sheet_data("Naplo")
+
+        # Régi adatbázis esetén a régi oszlopnév átnevezése
+        if not df.empty and "Felhasznalo" in df.columns and "Felhasználó" not in df.columns:
+            df = df.rename(columns={"Felhasznalo": "Felhasználó"})
+
+        # Ha nincs Felhasználó oszlop, hozzuk létre
+        if "Felhasználó" not in df.columns:
+            df["Felhasználó"] = ""
+
+        if "Idopont" not in df.columns:
+            df["Idopont"] = ""
+
+        if "Muvelet" not in df.columns:
+            df["Muvelet"] = ""
+
+        # Biztosítjuk az egységes sorrendet
+        df = df[["Idopont", "Felhasználó", "Muvelet"]]
+
         df = pd.concat([df, new_log], ignore_index=True)
-        save_sheet_data("Naplo", df)
+
+        self.db.save_sheet_data("Naplo", df)
 
         if hasattr(self, "naplo_tree"):
             self.refresh_naplo_view()
@@ -214,17 +221,17 @@ class KeszletApp(ctk.CTk):
     def is_shipment_name_taken(self, name):
         if not name:
             return False
-        df_orders = load_sheet_data("Megrendelesek")
+        df_orders = self.db.load_sheet_data("Megrendelesek")
         if not df_orders.empty and "Szallitmany_Nev" in df_orders.columns:
             if name in df_orders["Szallitmany_Nev"].values:
                 return True
 
-        df_kiadas = load_sheet_data("Kiadasok")
+        df_kiadas = self.db.load_sheet_data("Kiadasok")
         if not df_kiadas.empty and "Megjegyzés" in df_kiadas.columns:
             if df_kiadas["Megjegyzés"].astype(str).str.contains(name).any():
                 return True
 
-        df_hasznalt = load_sheet_data("HasznaltSzallitmanyok")
+        df_hasznalt = self.db.load_sheet_data("HasznaltSzallitmanyok")
         if not df_hasznalt.empty and "Szallitmany_Nev" in df_hasznalt.columns:
             if name in df_hasznalt["Szallitmany_Nev"].values:
                 return True
@@ -328,7 +335,7 @@ class KeszletApp(ctk.CTk):
         for row in self.keszlet_tree.get_children():
             self.keszlet_tree.delete(row)
 
-        df = load_sheet_data("Keszlet")
+        df = self.db.load_sheet_data("Keszlet")
         if df.empty:
             return
 
@@ -368,7 +375,7 @@ class KeszletApp(ctk.CTk):
         win.grab_set()
         win.focus_set()
 
-        df_existing = load_sheet_data("Keszlet")
+        df_existing = self.db.load_sheet_data("Keszlet")
         existing_brands = sorted(list(df_existing[
                                           "Beszállító"].dropna().unique())) if not df_existing.empty and "Beszállító" in df_existing.columns else []
         existing_names = sorted(list(df_existing[
@@ -445,13 +452,13 @@ class KeszletApp(ctk.CTk):
                 messagebox.showerror("Hiba", "A mennyiség nem lehet kisebb, mint 1!", parent=win)
                 return
 
-            df = load_sheet_data("Keszlet")
+            df = self.db.load_sheet_data("Keszlet")
             if not df.empty and lot in df["Lot szám"].values:
                 if messagebox.askyesno("Létező Lot szám",
                                        f"Már létezik termék ezzel a Lot számmal ({lot}). Hozzáadjuk?", parent=win):
                     idx = df[df["Lot szám"] == lot].index[0]
                     df.loc[idx, "Mennyiség"] = str(int(float(df.loc[idx, "Mennyiség"])) + menny_val)
-                    save_sheet_data("Keszlet", df)
+                    self.db.save_sheet_data("Keszlet", df)
                     self.log_action(f"Meglévő Lot bővítve: {brand} - {name} (Lot: {lot}), +{menny_val}")
                     self.refresh_keszlet_view()
                     if hasattr(self, "refresh_admin_szallitas_view"):
@@ -476,7 +483,7 @@ class KeszletApp(ctk.CTk):
                 "Gyártás ideje": gyartas, "Lejárat": lejarat, "Mennyiség": str(menny_val), "Megjegyzés": megj
             }])
             df = pd.concat([df, new_row], ignore_index=True)
-            save_sheet_data("Keszlet", df)
+            self.db.save_sheet_data("Keszlet", df)
 
             self.log_action(f"Új termék hozzáadva: {brand} - {name} (Lot: {lot})")
             self.refresh_keszlet_view()
@@ -506,7 +513,7 @@ class KeszletApp(ctk.CTk):
         win.grab_set()
         win.focus_set()
 
-        df_existing = load_sheet_data("Keszlet")
+        df_existing = self.db.load_sheet_data("Keszlet")
         existing_brands = sorted(list(df_existing[
                                           "Beszállító"].dropna().unique())) if not df_existing.empty and "Beszállító" in df_existing.columns else []
         existing_names = sorted(list(df_existing[
@@ -588,7 +595,7 @@ class KeszletApp(ctk.CTk):
                 messagebox.showerror("Hiba", "A mennyiség nem lehet negatív!", parent=win)
                 return
 
-            df = load_sheet_data("Keszlet")
+            df = self.db.load_sheet_data("Keszlet")
             if not df.empty and "ID" in df.columns:
                 idx = df[df["ID"].astype(str) == str(item_id)].index
                 if not idx.empty:
@@ -601,7 +608,7 @@ class KeszletApp(ctk.CTk):
                     df.loc[i, "Mennyiség"] = str(menny_val)
                     df.loc[i, "Megjegyzés"] = new_megj
 
-                    save_sheet_data("Keszlet", df)
+                    self.db.save_sheet_data("Keszlet", df)
                     self.log_action(f"Termék szerkesztve: ID {item_id} ({new_brand} - {new_name})")
                     self.refresh_keszlet_view()
                     if hasattr(self, "refresh_admin_szallitas_view"):
@@ -624,9 +631,9 @@ class KeszletApp(ctk.CTk):
             return
         item_values = self.keszlet_tree.item(selected_item, "values")
         if messagebox.askyesno("Megerősítés", f"Biztosan törlöd: {item_values[1]} - {item_values[2]}?"):
-            df = load_sheet_data("Keszlet")
+            df = self.db.load_sheet_data("Keszlet")
             df = df[df["ID"].astype(str) != str(item_values[0])]
-            save_sheet_data("Keszlet", df)
+            self.db.save_sheet_data("Keszlet", df)
             self.log_action(f"Termék törölve: {item_values[1]} - {item_values[2]}")
             self.refresh_keszlet_view()
 
@@ -635,7 +642,7 @@ class KeszletApp(ctk.CTk):
             messagebox.showerror("Jogosultság hiba", "Ezt a műveletet csak adminisztrátor végezheti el!")
             return
 
-        df = load_sheet_data("Keszlet")
+        df = self.db.load_sheet_data("Keszlet")
         if df.empty:
             messagebox.showwarning("Figyelmeztetés", "A készlet tábla üres, nincs mit menteni!")
             return
@@ -689,22 +696,22 @@ class KeszletApp(ctk.CTk):
                 return
 
             if 1 <= kiad_f <= max_f:
-                df_keszlet = load_sheet_data("Keszlet")
+                df_keszlet = self.db.load_sheet_data("Keszlet")
                 idx = df_keszlet[df_keszlet["ID"].astype(str) == str(item_id)].index
                 remaining = max_f - kiad_f
                 if remaining == 0:
                     df_keszlet = df_keszlet.drop(idx)
                 else:
                     df_keszlet.loc[idx, "Mennyiség"] = str(remaining)
-                save_sheet_data("Keszlet", df_keszlet)
+                self.db.save_sheet_data("Keszlet", df_keszlet)
 
-                df_kiadas = load_sheet_data("Kiadasok")
+                df_kiadas = self.db.load_sheet_data("Kiadasok")
                 new_kiadas = pd.DataFrame([{
                     "Idopont": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "Beszállító": brand, "Termék neve": name, "Lot szám": lot,
                     "Mennyiség": str(kiad_f), "Felhasználó": self.username, "Megjegyzés": e_megj.get().strip()
                 }])
-                save_sheet_data("Kiadasok", pd.concat([df_kiadas, new_kiadas], ignore_index=True))
+                self.db.save_sheet_data("Kiadasok", pd.concat([df_kiadas, new_kiadas], ignore_index=True))
                 self.log_action(f"Kiadás: {brand} - {name} (Lot: {lot}), Mennyiség: {kiad_f}")
                 self.refresh_keszlet_view()
                 win.destroy()
@@ -844,7 +851,7 @@ class KeszletApp(ctk.CTk):
         for row in self.admin_keszlet_tree.get_children():
             self.admin_keszlet_tree.delete(row)
 
-        df = load_sheet_data("Keszlet")
+        df = self.db.load_sheet_data("Keszlet")
         if df.empty:
             return
 
@@ -964,16 +971,16 @@ class KeszletApp(ctk.CTk):
                                    parent=self.tab_admin_szallitas)
             return
 
-        df_orders = load_sheet_data("Megrendelesek")
+        df_orders = self.db.load_sheet_data("Megrendelesek")
         new_orders_df = pd.DataFrame(self.temp_shipment_items)
-        save_sheet_data("Megrendelesek", pd.concat([df_orders, new_orders_df], ignore_index=True))
+        self.db.save_sheet_data("Megrendelesek", pd.concat([df_orders, new_orders_df], ignore_index=True))
 
-        df_hasznalt = load_sheet_data("HasznaltSzallitmanyok")
+        df_hasznalt = self.db.load_sheet_data("HasznaltSzallitmanyok")
         if df_hasznalt.empty:
             df_hasznalt = pd.DataFrame(columns=["Szallitmany_Nev"])
         if current_shipment_name not in df_hasznalt["Szallitmany_Nev"].values:
             new_h = pd.DataFrame([{"Szallitmany_Nev": current_shipment_name}])
-            save_sheet_data("HasznaltSzallitmanyok", pd.concat([df_hasznalt, new_h], ignore_index=True))
+            self.db.save_sheet_data("HasznaltSzallitmanyok", pd.concat([df_hasznalt, new_h], ignore_index=True))
 
         for item in self.temp_shipment_items:
             self.log_action(
@@ -1085,7 +1092,7 @@ class KeszletApp(ctk.CTk):
         for row in self.osszekeszi_tree.get_children():
             self.osszekeszi_tree.delete(row)
 
-        df = load_sheet_data("Megrendelesek")
+        df = self.db.load_sheet_data("Megrendelesek")
         if df.empty:
             return
 
@@ -1208,9 +1215,9 @@ class KeszletApp(ctk.CTk):
 
         def print_and_finalize():
             try:
-                df_orders = load_sheet_data("Megrendelesek")
-                df_keszlet = load_sheet_data("Keszlet")
-                df_kiadas = load_sheet_data("Kiadasok")
+                df_orders = self.db.load_sheet_data("Megrendelesek")
+                df_keszlet = self.db.load_sheet_data("Keszlet")
+                df_kiadas = self.db.load_sheet_data("Kiadasok")
 
                 for itm in items_list:
                     shipment_name, brand, name, lot, qty_str, pickup_date, timeslot, note = itm
@@ -1253,16 +1260,16 @@ class KeszletApp(ctk.CTk):
                         self.log_action(
                             f"Szállítmány összekészítve & kiadva [{shipment_name}]: {brand} - {name}, Mennyiség: {qty_str}")
 
-                save_sheet_data("Megrendelesek", df_orders)
-                save_sheet_data("Keszlet", df_keszlet)
-                save_sheet_data("Kiadasok", df_kiadas)
+                self.db.save_sheet_data("Megrendelesek", df_orders)
+                self.db.save_sheet_data("Keszlet", df_keszlet)
+                self.db.save_sheet_data("Kiadasok", df_kiadas)
 
-                df_hasznalt = load_sheet_data("HasznaltSzallitmanyok")
+                df_hasznalt = self.db.load_sheet_data("HasznaltSzallitmanyok")
                 if df_hasznalt.empty:
                     df_hasznalt = pd.DataFrame(columns=["Szallitmany_Nev"])
                 if default_shipment_name not in df_hasznalt["Szallitmany_Nev"].values:
                     new_h = pd.DataFrame([{"Szallitmany_Nev": default_shipment_name}])
-                    save_sheet_data("HasznaltSzallitmanyok", pd.concat([df_hasznalt, new_h], ignore_index=True))
+                    self.db.save_sheet_data("HasznaltSzallitmanyok", pd.concat([df_hasznalt, new_h], ignore_index=True))
 
                 self.refresh_osszekeszi_view()
                 self.refresh_keszlet_view()
@@ -1332,39 +1339,197 @@ class KeszletApp(ctk.CTk):
             return
         item_values = self.osszekeszi_tree.item(selected, "values")
         if messagebox.askyesno("Törlés", "Biztosan törlöd ezt a megrendelést az összekészítési listáról?"):
-            df = load_sheet_data("Megrendelesek")
+            df = self.db.load_sheet_data("Megrendelesek")
             df = df[~((df["Szallitmany_Nev"] == item_values[1]) & (df["Beszállító"] == item_values[2]) & (
                         df["Termék neve"] == item_values[3]) & (df["Lot szám"] == item_values[4]) & (
                                   df["Mennyiség"] == item_values[5]))]
-            save_sheet_data("Megrendelesek", df)
+            self.db.save_sheet_data("Megrendelesek", df)
             self.log_action(f"Megrendelés törölve az összekészítésből: {item_values[1]} -> {item_values[3]}")
             self.refresh_osszekeszi_view()
 
     def build_kiadas_tab(self):
-        ctk.CTkLabel(self.tab_kiadas, text="Korábbi kiadások / Kiszállítások előzményei",
-                     font=("Arial", 16, "bold")).pack(pady=10)
+        ctk.CTkLabel(
+            self.tab_kiadas,
+            text="Korábbi kiadások / Kiszállítások előzményei",
+            font=("Arial", 16, "bold")
+        ).pack(pady=10)
+
+        # ==========================================================
+        # KERESŐ / SZŰRŐ PANEL
+        # ==========================================================
+
+        search_frame = ctk.CTkFrame(self.tab_kiadas)
+        search_frame.pack(fill="x", padx=10, pady=(0, 5))
+
+        # Általános keresés
+        ctk.CTkLabel(
+            search_frame,
+            text="Keresés:"
+        ).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+
+        self.kiadas_search_entry = ctk.CTkEntry(
+            search_frame,
+            width=220,
+            placeholder_text="Név / Felhasználó / Lot / Beszállító / Termék..."
+        )
+        self.kiadas_search_entry.grid(
+            row=0, column=1,
+            padx=5, pady=5,
+            sticky="w"
+        )
+
+        self.kiadas_search_entry.bind(
+            "<KeyRelease>",
+            lambda event: self.refresh_kiadas_view()
+        )
+
+        # Dátumtól
+        ctk.CTkLabel(
+            search_frame,
+            text="Dátumtól:"
+        ).grid(row=0, column=2, padx=(15, 5), pady=5)
+
+        self.kiadas_date_from_entry = ctk.CTkEntry(
+            search_frame,
+            width=110,
+            placeholder_text="ÉÉÉÉ-HH-NN"
+        )
+        self.kiadas_date_from_entry.grid(
+            row=0, column=3,
+            padx=5, pady=5
+        )
+
+        self.kiadas_date_from_entry.bind(
+            "<KeyRelease>",
+            lambda event: self.refresh_kiadas_view()
+        )
+
+        # Dátumig
+        ctk.CTkLabel(
+            search_frame,
+            text="Dátumig:"
+        ).grid(row=0, column=4, padx=(15, 5), pady=5)
+
+        self.kiadas_date_to_entry = ctk.CTkEntry(
+            search_frame,
+            width=110,
+            placeholder_text="ÉÉÉÉ-HH-NN"
+        )
+        self.kiadas_date_to_entry.grid(
+            row=0, column=5,
+            padx=5, pady=5
+        )
+
+        self.kiadas_date_to_entry.bind(
+            "<KeyRelease>",
+            lambda event: self.refresh_kiadas_view()
+        )
+
+        # Keresés törlése
+        btn_reset = ctk.CTkButton(
+            search_frame,
+            text="Szűrés törlése",
+            command=self.reset_kiadas_search,
+            fg_color="gray",
+            width=120
+        )
+        btn_reset.grid(
+            row=0, column=6,
+            padx=10, pady=5
+        )
+
+        # ==========================================================
+        # TÁBLÁZAT
+        # ==========================================================
 
         table_frame = ctk.CTkFrame(self.tab_kiadas)
-        table_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        table_frame.pack(
+            fill="both",
+            expand=True,
+            padx=10,
+            pady=5
+        )
 
-        columns = ("Időpont", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felhasználó", "Megjegyzés")
-        self.kiadas_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
+        columns = (
+            "Időpont",
+            "Beszállító",
+            "Termék neve",
+            "Lot szám",
+            "Mennyiség",
+            "Felhasználó",
+            "Megjegyzés"
+        )
+
+        self.kiadas_tree = ttk.Treeview(
+            table_frame,
+            columns=columns,
+            show="headings"
+        )
+
+        column_widths = {
+            "Időpont": 150,
+            "Beszállító": 130,
+            "Termék neve": 180,
+            "Lot szám": 110,
+            "Mennyiség": 90,
+            "Felhasználó": 130,
+            "Megjegyzés": 300
+        }
 
         for col in columns:
-            self.kiadas_tree.heading(col, text=col)
-            self.kiadas_tree.column(col, width=150, stretch=False)
+            self.kiadas_tree.heading(
+                col,
+                text=col
+            )
 
-        scrollbar_y = ttk.Scrollbar(table_frame, orient="vertical", command=self.kiadas_tree.yview)
-        scrollbar_x = ttk.Scrollbar(table_frame, orient="horizontal", command=self.kiadas_tree.xview)
+            self.kiadas_tree.column(
+                col,
+                width=column_widths.get(col, 150),
+                stretch=True
+            )
 
-        self.kiadas_tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+        scrollbar_y = ttk.Scrollbar(
+            table_frame,
+            orient="vertical",
+            command=self.kiadas_tree.yview
+        )
 
-        scrollbar_y.pack(side="right", fill="y")
-        scrollbar_x.pack(side="bottom", fill="x")
-        self.kiadas_tree.pack(side="left", fill="both", expand=True)
+        scrollbar_x = ttk.Scrollbar(
+            table_frame,
+            orient="horizontal",
+            command=self.kiadas_tree.xview
+        )
 
-        btn_refresh = ctk.CTkButton(self.tab_kiadas, text="Előzmények Frissítése", command=self.refresh_kiadas_view,
-                                    fg_color="gray", width=200)
+        self.kiadas_tree.configure(
+            yscrollcommand=scrollbar_y.set,
+            xscrollcommand=scrollbar_x.set
+        )
+
+        scrollbar_y.pack(
+            side="right",
+            fill="y"
+        )
+
+        scrollbar_x.pack(
+            side="bottom",
+            fill="x"
+        )
+
+        self.kiadas_tree.pack(
+            side="left",
+            fill="both",
+            expand=True
+        )
+
+        # Frissítés gomb
+        btn_refresh = ctk.CTkButton(
+            self.tab_kiadas,
+            text="Előzmények frissítése",
+            command=self.refresh_kiadas_view,
+            fg_color="gray",
+            width=200
+        )
+
         btn_refresh.pack(pady=10)
 
         self.refresh_kiadas_view()
@@ -1372,18 +1537,151 @@ class KeszletApp(ctk.CTk):
     def refresh_kiadas_view(self):
         if not hasattr(self, "kiadas_tree"):
             return
+
         for row in self.kiadas_tree.get_children():
             self.kiadas_tree.delete(row)
 
-        df = load_sheet_data("Kiadasok")
+        df = self.db.load_sheet_data("Kiadasok")
+
         if df.empty:
             return
 
+        # ----------------------------------------------------------
+        # KERESÉSI SZÖVEG
+        # ----------------------------------------------------------
+
+        query = ""
+
+        if hasattr(self, "kiadas_search_entry"):
+            query = self.kiadas_search_entry.get().strip().lower()
+
+        if query:
+            search_columns = [
+                "Beszállító",
+                "Termék neve",
+                "Lot szám",
+                "Felhasználó",
+                "Megjegyzés",
+                "Idopont"
+            ]
+
+            available_columns = [
+                col for col in search_columns
+                if col in df.columns
+            ]
+
+            if available_columns:
+                mask = pd.Series(False, index=df.index)
+
+                for col in available_columns:
+                    mask = mask | (
+                        df[col]
+                        .fillna("")
+                        .astype(str)
+                        .str.lower()
+                        .str.contains(query, regex=False)
+                    )
+
+                df = df[mask]
+
+        # ----------------------------------------------------------
+        # DÁTUMTÓL SZŰRÉS
+        # ----------------------------------------------------------
+
+        date_from = ""
+
+        if hasattr(self, "kiadas_date_from_entry"):
+            date_from = self.kiadas_date_from_entry.get().strip()
+
+        if date_from:
+            try:
+                date_from_value = pd.to_datetime(
+                    date_from,
+                    format="%Y-%m-%d"
+                )
+
+                df["_Idopont_datum"] = pd.to_datetime(
+                    df["Idopont"],
+                    errors="coerce"
+                )
+
+                df = df[
+                    df["_Idopont_datum"] >= date_from_value
+                    ]
+
+            except Exception:
+                pass
+
+        # ----------------------------------------------------------
+        # DÁTUMIG SZŰRÉS
+        # ----------------------------------------------------------
+
+        date_to = ""
+
+        if hasattr(self, "kiadas_date_to_entry"):
+            date_to = self.kiadas_date_to_entry.get().strip()
+
+        if date_to:
+            try:
+                date_to_value = pd.to_datetime(
+                    date_to,
+                    format="%Y-%m-%d"
+                )
+
+                # A teljes nap bekerüljön
+                date_to_value = (
+                        date_to_value +
+                        pd.Timedelta(days=1) -
+                        pd.Timedelta(seconds=1)
+                )
+
+                if "_Idopont_datum" not in df.columns:
+                    df["_Idopont_datum"] = pd.to_datetime(
+                        df["Idopont"],
+                        errors="coerce"
+                    )
+
+                df = df[
+                    df["_Idopont_datum"] <= date_to_value
+                    ]
+
+            except Exception:
+                pass
+
+        # Segédoszlop törlése
+        if "_Idopont_datum" in df.columns:
+            df = df.drop(columns=["_Idopont_datum"])
+
+        # ----------------------------------------------------------
+        # TÁBLÁZAT FELTÖLTÉSE
+        # ----------------------------------------------------------
+
         for _, row in df.iterrows():
-            self.kiadas_tree.insert("", "end", values=(
-                row.get("Idopont", ""), row.get("Beszállító", ""), row.get("Termék neve", ""),
-                row.get("Lot szám", ""), row.get("Mennyiség", ""), row.get("Felhasználó", ""), row.get("Megjegyzés", "")
-            ))
+            self.kiadas_tree.insert(
+                "",
+                "end",
+                values=(
+                    row.get("Idopont", ""),
+                    row.get("Beszállító", ""),
+                    row.get("Termék neve", ""),
+                    row.get("Lot szám", ""),
+                    row.get("Mennyiség", ""),
+                    row.get("Felhasználó", ""),
+                    row.get("Megjegyzés", "")
+                )
+            )
+
+    def reset_kiadas_search(self):
+        if hasattr(self, "kiadas_search_entry"):
+            self.kiadas_search_entry.delete(0, "end")
+
+        if hasattr(self, "kiadas_date_from_entry"):
+            self.kiadas_date_from_entry.delete(0, "end")
+
+        if hasattr(self, "kiadas_date_to_entry"):
+            self.kiadas_date_to_entry.delete(0, "end")
+
+        self.refresh_kiadas_view()
 
     def build_javaslatok_tab(self):
         ctk.CTkLabel(self.tab_javaslatok, text="Fejlesztési javaslatok beküldése és kezelése",
@@ -1405,14 +1703,14 @@ class KeszletApp(ctk.CTk):
                 messagebox.showwarning("Figyelmeztetés", "A javaslat mező nem lehet üres!", parent=self.tab_javaslatok)
                 return
 
-            df = load_sheet_data("FejlesztesiJavaslatok")
+            df = self.db.load_sheet_data("FejlesztesiJavaslatok")
             new_id = str(len(df) + 1) if not df.empty else "1"
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             new_row = pd.DataFrame([{
                 "ID": new_id, "Felhasznalo": self.username, "Javaslat": text, "Idopont": timestamp
             }])
-            save_sheet_data("FejlesztesiJavaslatok", pd.concat([df, new_row], ignore_index=True))
+            self.db.save_sheet_data("FejlesztesiJavaslatok", pd.concat([df, new_row], ignore_index=True))
             self.log_action(f"Fejlesztési javaslat beküldve: {text[:30]}...")
             self.javaslat_textbox.delete("1.0", "end")
             messagebox.showinfo("Siker", "Fejlesztési javaslat sikeresen elküldve!", parent=self.tab_javaslatok)
@@ -1471,11 +1769,11 @@ class KeszletApp(ctk.CTk):
                     if not new_txt:
                         messagebox.showerror("Hiba", "A szöveg nem lehet üres!", parent=edit_win)
                         return
-                    df = load_sheet_data("FejlesztesiJavaslatok")
+                    df = self.db.load_sheet_data("FejlesztesiJavaslatok")
                     idx = df[df["ID"].astype(str) == str(item_id)].index
                     if not idx.empty:
                         df.loc[idx, "Javaslat"] = new_txt
-                        save_sheet_data("FejlesztesiJavaslatok", df)
+                        self.db.save_sheet_data("FejlesztesiJavaslatok", df)
                         self.log_action(f"Fejlesztési javaslat szerkesztve (ID: {item_id})")
                         self.refresh_javaslatok_view()
                         edit_win.destroy()
@@ -1493,9 +1791,9 @@ class KeszletApp(ctk.CTk):
                 item_id = vals[0]
 
                 if messagebox.askyesno("Törlés", "Biztosan törlöd ezt a fejlesztési javaslatot?"):
-                    df = load_sheet_data("FejlesztesiJavaslatok")
+                    df = self.db.load_sheet_data("FejlesztesiJavaslatok")
                     df = df[df["ID"].astype(str) != str(item_id)]
-                    save_sheet_data("FejlesztesiJavaslatok", df)
+                    self.db.save_sheet_data("FejlesztesiJavaslatok", df)
                     self.log_action(f"Fejlesztési javaslat törölve (ID: {item_id})")
                     self.refresh_javaslatok_view()
 
@@ -1514,7 +1812,7 @@ class KeszletApp(ctk.CTk):
             return
         for row in self.javaslat_tree.get_children():
             self.javaslat_tree.delete(row)
-        df = load_sheet_data("FejlesztesiJavaslatok")
+        df = self.db.load_sheet_data("FejlesztesiJavaslatok")
         if df.empty:
             return
         for _, row in df.iterrows():
@@ -1523,33 +1821,231 @@ class KeszletApp(ctk.CTk):
             ))
 
     def build_naplo_tab(self):
-        ctk.CTkLabel(self.tab_naplo, text="Rendszerszintű eseménynapló", font=("Arial", 16, "bold")).pack(pady=10)
+        ctk.CTkLabel(
+            self.tab_naplo,
+            text="Rendszerszintű eseménynapló",
+            font=("Arial", 16, "bold")
+        ).pack(pady=10)
+
+        # ==========================================================
+        # KERESŐPANEL
+        # ==========================================================
+
+        search_frame = ctk.CTkFrame(self.tab_naplo)
+        search_frame.pack(
+            fill="x",
+            padx=10,
+            pady=(0, 5)
+        )
+
+        ctk.CTkLabel(
+            search_frame,
+            text="Keresés:"
+        ).pack(
+            side="left",
+            padx=5
+        )
+
+        self.naplo_search_entry = ctk.CTkEntry(
+            search_frame,
+            width=300,
+            placeholder_text="Felhasználó / művelet / dátum..."
+        )
+
+        self.naplo_search_entry.pack(
+            side="left",
+            padx=5,
+            pady=5
+        )
+
+        self.naplo_search_entry.bind(
+            "<KeyRelease>",
+            lambda event: self.refresh_naplo_view()
+        )
+
+        btn_reset = ctk.CTkButton(
+            search_frame,
+            text="Szűrés törlése",
+            command=self.reset_naplo_search,
+            fg_color="gray",
+            width=120
+        )
+
+        btn_reset.pack(
+            side="left",
+            padx=10
+        )
+
+        # ==========================================================
+        # NAPLÓ TÁBLÁZAT
+        # ==========================================================
+
         table_frame = ctk.CTkFrame(self.tab_naplo)
-        table_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        table_frame.pack(
+            fill="both",
+            expand=True,
+            padx=10,
+            pady=5
+        )
 
-        columns = ("Időpont", "Felhasználó", "Művelet")
-        self.naplo_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
-        for col in columns:
-            self.naplo_tree.heading(col, text=col)
-            self.naplo_tree.column(col, width=250)
+        columns = (
+            "Időpont",
+            "Felhasználó",
+            "Művelet"
+        )
 
-        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.naplo_tree.yview)
-        self.naplo_tree.configure(yscrollcommand=scrollbar.set)
-        self.naplo_tree.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        self.naplo_tree = ttk.Treeview(
+            table_frame,
+            columns=columns,
+            show="headings"
+        )
+
+        self.naplo_tree.heading(
+            "Időpont",
+            text="Időpont"
+        )
+
+        self.naplo_tree.heading(
+            "Felhasználó",
+            text="Felhasználó"
+        )
+
+        self.naplo_tree.heading(
+            "Művelet",
+            text="Művelet"
+        )
+
+        self.naplo_tree.column(
+            "Időpont",
+            width=170,
+            stretch=False
+        )
+
+        self.naplo_tree.column(
+            "Felhasználó",
+            width=180,
+            stretch=False
+        )
+
+        self.naplo_tree.column(
+            "Művelet",
+            width=700,
+            stretch=True
+        )
+
+        scrollbar_y = ttk.Scrollbar(
+            table_frame,
+            orient="vertical",
+            command=self.naplo_tree.yview
+        )
+
+        scrollbar_x = ttk.Scrollbar(
+            table_frame,
+            orient="horizontal",
+            command=self.naplo_tree.xview
+        )
+
+        self.naplo_tree.configure(
+            yscrollcommand=scrollbar_y.set,
+            xscrollcommand=scrollbar_x.set
+        )
+
+        scrollbar_y.pack(
+            side="right",
+            fill="y"
+        )
+
+        scrollbar_x.pack(
+            side="bottom",
+            fill="x"
+        )
+
+        self.naplo_tree.pack(
+            side="left",
+            fill="both",
+            expand=True
+        )
+
         self.refresh_naplo_view()
 
     def refresh_naplo_view(self):
         if not hasattr(self, "naplo_tree"):
             return
+
         for row in self.naplo_tree.get_children():
             self.naplo_tree.delete(row)
-        df = load_sheet_data("Naplo")
+
+        df = self.db.load_sheet_data("Naplo")
+
         if df.empty:
             return
+
+        # ----------------------------------------------------------
+        # RÉGI OSZLOPNÉV KEZELÉSE
+        # ----------------------------------------------------------
+
+        if "Felhasznalo" in df.columns and "Felhasználó" not in df.columns:
+            df = df.rename(
+                columns={
+                    "Felhasznalo": "Felhasználó"
+                }
+            )
+
+        # ----------------------------------------------------------
+        # KERESÉS
+        # ----------------------------------------------------------
+
+        query = ""
+
+        if hasattr(self, "naplo_search_entry"):
+            query = self.naplo_search_entry.get().strip().lower()
+
+        if query:
+            search_columns = [
+                "Idopont",
+                "Felhasználó",
+                "Muvelet"
+            ]
+
+            available_columns = [
+                col for col in search_columns
+                if col in df.columns
+            ]
+
+            if available_columns:
+                mask = pd.Series(
+                    False,
+                    index=df.index
+                )
+
+                for col in available_columns:
+                    mask = mask | (
+                        df[col]
+                        .fillna("")
+                        .astype(str)
+                        .str.lower()
+                        .str.contains(
+                            query,
+                            regex=False
+                        )
+                    )
+
+                df = df[mask]
+
+        # ----------------------------------------------------------
+        # TÁBLÁZAT
+        # ----------------------------------------------------------
+
         for _, row in df.iterrows():
-            self.naplo_tree.insert("", "end",
-                                   values=(row.get("Idopont", ""), row.get("Felhasználó", ""), row.get("Muvelet", "")))
+            self.naplo_tree.insert(
+                "",
+                "end",
+                values=(
+                    row.get("Idopont", ""),
+                    row.get("Felhasználó", ""),
+                    row.get("Muvelet", "")
+                )
+            )
 
     def build_users_tab(self):
         ctk.CTkLabel(self.tab_users, text="Rendszerfelhasználók kezelése", font=("Arial", 16, "bold")).pack(pady=10)
@@ -1591,12 +2087,18 @@ class KeszletApp(ctk.CTk):
 
         self.refresh_users_view()
 
+    def reset_naplo_search(self):
+        if hasattr(self, "naplo_search_entry"):
+            self.naplo_search_entry.delete(0, "end")
+
+        self.refresh_naplo_view()
+
     def refresh_users_view(self):
         if not hasattr(self, "users_tree"):
             return
         for row in self.users_tree.get_children():
             self.users_tree.delete(row)
-        df = load_sheet_data("Felhasznalok")
+        df = self.db.load_sheet_data("Felhasznalok")
         if df.empty:
             return
         for _, row in df.iterrows():
@@ -1612,13 +2114,13 @@ class KeszletApp(ctk.CTk):
             messagebox.showerror("Hiba", "Add meg a felhasználónevet és jelszót!", parent=self.tab_users)
             return
 
-        df = load_sheet_data("Felhasznalok")
+        df = self.db.load_sheet_data("Felhasznalok")
         if not df.empty and u in df["felhasznalo"].values:
             messagebox.showerror("Hiba", "Már létezik ilyen felhasználó!", parent=self.tab_users)
             return
 
         new_row = pd.DataFrame([{"felhasznalo": u, "jelszo": p, "szint": s}])
-        save_sheet_data("Felhasznalok", pd.concat([df, new_row], ignore_index=True))
+        self.db.save_sheet_data("Felhasznalok", pd.concat([df, new_row], ignore_index=True))
         self.log_action(f"Új felhasználó létrehozva: {u} ({s})")
         self.refresh_users_view()
         self.new_user_entry.delete(0, "end")
@@ -1636,9 +2138,9 @@ class KeszletApp(ctk.CTk):
             return
 
         if messagebox.askyesno("Törlés", "Biztosan törlöd a következő felhasználót: " + u_name + "?"):
-            df = load_sheet_data("Felhasznalok")
+            df = self.db.load_sheet_data("Felhasznalok")
             df = df[df["felhasznalo"] != u_name]
-            save_sheet_data("Felhasznalok", df)
+            self.db.save_sheet_data("Felhasznalok", df)
             self.log_action(f"Felhasználó törölve: {u_name}")
             self.refresh_users_view()
 
