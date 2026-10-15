@@ -1144,7 +1144,7 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-        "Kijelölve", "Szállítmány Neve", "Beszállító", "Termék neve", "Lot szám", "Mennyiség", "Felvétel Napja",
+        "Kijelölve", "Szállítmány Neve", "Beszállító", "Termék neve", "Cikkszám", "Lot szám", "Mennyiség", "Felvétel Napja",
         "Idősáv", "Megjegyzés", "Állapot")
         self.osszekeszi_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
@@ -1239,7 +1239,7 @@ class KeszletApp(ctk.CTk):
 
         for _, row in df.iterrows():
             self.osszekeszi_tree.insert("", "end", values=(
-                "☐", row.get("Szallitmany_Nev", ""), row.get("Beszállító", ""), row.get("Termék neve", ""),
+                "☐", row.get("Szallitmany_Nev", ""), row.get("Beszállító", ""), row.get("Termék neve", ""), row.get("Cikkszám",""),
                 row.get("Lot szám", ""), row.get("Mennyiség", ""), row.get("Felvetel_Datum", ""),
                 row.get("Idosav", ""), row.get("Megjegyzés", ""), row.get("Allapot", "")
             ))
@@ -1259,8 +1259,8 @@ class KeszletApp(ctk.CTk):
 
         processed_records = []
         for item_vals in checked_items:
-            _, shipment_name, brand, name, lot, qty_str, pickup_date, timeslot, note, status = item_vals
-            processed_records.append((shipment_name, brand, name, lot, qty_str, pickup_date, timeslot, note))
+            _, shipment_name, brand, name, cikkszam, lot, qty_str, pickup_date, timeslot, note, status = item_vals
+            processed_records.append((shipment_name, brand, name, cikkszam, lot, qty_str, pickup_date, timeslot, note))
 
         self.open_delivery_note_preview(processed_records)
 
@@ -1311,9 +1311,10 @@ class KeszletApp(ctk.CTk):
 
             items_str = ""
             for idx, itm in enumerate(items_list, 1):
-                shipment_name, brand, name, lot, qty, pickup_date, timeslot, note = itm
+                shipment_name, brand, name, cikkszam, lot, qty, pickup_date, timeslot, note = itm
                 items_str += (
                     f" {idx}. Termék: {name}\n"
+                    f"    Cikkszám: {cikkszam or '-'}\n"
                     f"    Beszállító: {brand} | Lot: {lot}\n"
                     f"    Mennyiség:  {qty} db\n"
                     f"    Idősáv:     {pickup_date} ({timeslot})\n"
