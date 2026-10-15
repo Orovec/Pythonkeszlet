@@ -634,7 +634,7 @@ class KeszletApp(ctk.CTk):
             messagebox.showwarning("Figyelmeztetés", "Válassz ki egy elemet a szerkesztéshez!")
             return
 
-        item_id, brand, name, lot, gyartas, lejarat, menny, megj = self.keszlet_tree.item(selected_item, "values")
+        item_id, brand, name, cikkszam, lot, gyartas, lejarat, menny, megj = self.keszlet_tree.item(selected_item, "values")
 
         win = ctk.CTkToplevel(self)
         win.title("Termék / Cikk Szerkesztése")
@@ -796,7 +796,7 @@ class KeszletApp(ctk.CTk):
             messagebox.showwarning("Figyelmeztetés", "Válassz ki egy elemet a készletből!")
             return
 
-        item_id, brand, name, lot, gyartas, lejarat, max_menny, _ = self.keszlet_tree.item(selected_item, "values")
+        item_id, brand, name, cikkszam, lot, gyartas, lejarat, max_menny, _ = self.keszlet_tree.item(selected_item, "values")
 
         win = ctk.CTkToplevel(self)
         win.title("Termék Kiszállítása")
@@ -837,7 +837,7 @@ class KeszletApp(ctk.CTk):
                 df_kiadas = self.db.load_sheet_data("Kiadasok")
                 new_kiadas = pd.DataFrame([{
                     "Idopont": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "Beszállító": brand, "Termék neve": name, "Lot szám": lot,
+                    "Beszállító": brand, "Termék neve": name, "Cikkszám": cikkszam, "Lot szám": lot,
                     "Mennyiség": str(kiad_f), "Felhasználó": self.username, "Megjegyzés": e_megj.get().strip()
                 }])
                 self.db.save_sheet_data("Kiadasok", pd.concat([df_kiadas, new_kiadas], ignore_index=True))
