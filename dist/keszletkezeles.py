@@ -906,7 +906,7 @@ class KeszletApp(ctk.CTk):
                                                                                                            padx=5,
                                                                                                            pady=5)
 
-        columns = ("ID", "Beszállító", "Termék neve", "Lot", "Készlet")
+        columns = ("ID", "Beszállító", "Termék neve", "Cikkszám", "Lot", "Készlet")
         self.admin_keszlet_tree = ttk.Treeview(left_pane, columns=columns, show="headings", height=12)
         col_widths = {"ID": 40, "Beszállító": 100, "Termék neve": 120, "Lot": 80, "Készlet": 60}
         for col in columns:
@@ -1002,7 +1002,7 @@ class KeszletApp(ctk.CTk):
         for _, row in df.iterrows():
             row_id = str(row.get("ID", ""))
             tree_item = self.admin_keszlet_tree.insert("", "end", values=(
-                row_id, row.get("Beszállító", ""), row.get("Termék neve", ""), row.get("Lot szám", ""),
+                row_id, row.get("Beszállító", ""), row.get("Termék neve", ""), row.get("Cikkszám",""), row.get("Lot szám", ""),
                 row.get("Mennyiség", "")
             ))
             item_map[row_id] = tree_item
@@ -1038,7 +1038,7 @@ class KeszletApp(ctk.CTk):
                                    parent=self.tab_admin_szallitas)
             return
 
-        item_id, brand, name, lot, max_qty = self.admin_keszlet_tree.item(selected, "values")
+        item_id, brand, name, cikkszam, lot, max_qty = self.admin_keszlet_tree.item(selected, "values")
         shipment_name = self.admin_shipment_name_entry.get().strip()
         qty_str = self.admin_qty_entry.get().strip()
         pickup_date = self.admin_date_entry.get().strip()
@@ -1065,6 +1065,7 @@ class KeszletApp(ctk.CTk):
                 "Szallitmany_Nev": shipment_name,
                 "Beszállító": brand,
                 "Termék neve": name,
+                "Cikkszám": cikkszam,
                 "Lot szám": lot,
                 "Mennyiség": str(qty_val),
                 "Felvetel_Datum": pickup_date,
