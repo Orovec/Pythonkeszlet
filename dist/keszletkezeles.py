@@ -658,6 +658,13 @@ class KeszletApp(ctk.CTk):
         e_name.pack(padx=20, pady=5)
         e_name.set(name)
 
+        ctk.CTkLabel(win, text="Cikkszám:").pack(
+            anchor="w", padx=20, pady=(10, 0)
+        )
+        e_cikkszam = ctk.CTkEntry(win, width=350)
+        e_cikkszam.insert(0, cikkszam)
+        e_cikkszam.pack(padx=20, pady=5)
+
         ctk.CTkLabel(win, text="Lot szám:").pack(anchor="w", padx=20, pady=(10, 0))
         e_lot = ctk.CTkEntry(win, width=350)
         e_lot.insert(0, lot)
@@ -705,8 +712,8 @@ class KeszletApp(ctk.CTk):
         e_megj.pack(padx=20, pady=5)
 
         def save_edited():
-            new_brand, new_name, new_lot, new_gyartas, new_lejarat, new_menny, new_megj = (
-                e_brand.get().strip(), e_name.get().strip(), e_lot.get().strip(),
+            new_brand, new_name, new_cikkszam, new_lot, new_gyartas, new_lejarat, new_menny, new_megj = (
+                e_brand.get().strip(), e_name.get().strip(), e_cikkszam.get().strip(), e_lot.get().strip(),
                 e_gyartas.get().strip(), e_lejarat.get().strip(), e_mennyiseg.get().strip(), e_megj.get().strip()
             )
 
@@ -731,6 +738,7 @@ class KeszletApp(ctk.CTk):
                     i = idx[0]
                     df.loc[i, "Beszállító"] = new_brand
                     df.loc[i, "Termék neve"] = new_name
+                    df.loc[i, "Cikkszám"] = new_cikkszam
                     df.loc[i, "Lot szám"] = new_lot
                     df.loc[i, "Gyártás ideje"] = new_gyartas
                     df.loc[i, "Lejárat"] = new_lejarat
