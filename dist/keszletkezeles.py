@@ -304,7 +304,7 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-        "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség", "Megjegyzés")
+        "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség", "Megjegyzés", "Cikkszám")
         self.keszlet_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
         for col in columns:
@@ -356,7 +356,7 @@ class KeszletApp(ctk.CTk):
             tree_item = self.keszlet_tree.insert("", "end", values=(
                 row_id, row.get("Beszállító", ""), row.get("Termék neve", ""),
                 row.get("Lot szám", ""), row.get("Gyártás ideje", ""), row.get("Lejárat", ""),
-                qty, row.get("Megjegyzés", "")
+                qty, row.get("Megjegyzés", ""), row.get("Cikkszám", "")
             ))
             item_map[row_id] = tree_item
 
@@ -369,130 +369,259 @@ class KeszletApp(ctk.CTk):
         self.refresh_keszlet_view()
 
     def open_add_product_window(self):
+        """Admin törzscikket is létrehozhat; minden szerepkör meglévő cikkhez rögzíthet készletadatokat."""
         win = ctk.CTkToplevel(self)
-        win.title("Új termék / Gyártás rögzítése")
-        win.geometry("400x600")
+        win.title("Új cikk / készlet rögzítése")
+        win.geometry("470x760")
         win.grab_set()
         win.focus_set()
 
-        df_existing = self.db.load_sheet_data("Keszlet")
-        existing_brands = sorted(list(df_existing[
-                                          "Beszállító"].dropna().unique())) if not df_existing.empty and "Beszállító" in df_existing.columns else []
-        existing_names = sorted(list(df_existing[
-                                         "Termék neve"].dropna().unique())) if not df_existing.empty and "Termék neve" in df_existing.columns else []
+        # Külön törzscikk-tábla: a cikkszám opcionális.
+        df_master = self.db.load_sheet_data("CikkTorzzs")
+        if df_master.empty:
+            df_stock = self.db.load_sheet_data("Keszlet")
+            if not df_stock.empty:
+                cols = [c for c in ["Beszállító", "Termék neve", "Cikkszám"] if c in df_stock.columns]
+                df_master = df_stock[cols].drop_duplicates().copy() if cols else pd.DataFrame()
+            if df_master.empty:
+                df_master = pd.DataFrame(columns=["Beszállító", "Termék neve", "Cikkszám"])
+            self.db.save_sheet_data("CikkTorzzs", df_master)
 
-        ctk.CTkLabel(win, text="Beszállító (Brand):").pack(anchor="w", padx=20, pady=(10, 0))
-        e_brand = ctk.CTkComboBox(win, values=existing_brands, width=350)
-        e_brand.pack(padx=20, pady=5)
-        e_brand.set(existing_brands[0] if existing_brands else "")
+        for col in ["Beszállító", "Termék neve", "Cikkszám"]:
+            if col not in df_master.columns:
+                df_master[col] = ""
 
-        ctk.CTkLabel(win, text="Termék neve:").pack(anchor="w", padx=20, pady=(10, 0))
-        e_name = ctk.CTkComboBox(win, values=existing_names, width=350)
-        e_name.pack(padx=20, pady=5)
-        e_name.set(existing_names[0] if existing_names else "")
+        def master_label(row):
+            sku = str(row.get("Cikkszám", "") or "").strip()
+            return f"{row.get('Beszállító', '')} | {row.get('Termék neve', '')}" + (f" | {sku}" if sku else "")
 
-        ctk.CTkLabel(win, text="Lot szám:").pack(anchor="w", padx=20, pady=(10, 0))
-        e_lot = ctk.CTkEntry(win, width=350)
-        e_lot.pack(padx=20, pady=5)
+        def get_masters():
+            data = self.db.load_sheet_data("CikkTorzzs")
+            if data.empty:
+                return []
+            for col in ["Beszállító", "Termék neve", "Cikkszám"]:
+                if col not in data.columns:
+                    data[col] = ""
+            return [(master_label(r), str(r.get("Beszállító", "")), str(r.get("Termék neve", "")),
+                     str(r.get("Cikkszám", "") or "")) for _, r in data.iterrows()]
 
-        ctk.CTkLabel(win, text="Gyártás ideje (ÉÉÉÉ-HH-NN):").pack(anchor="w", padx=20, pady=(10, 0))
-        e_gyartas = ctk.CTkEntry(win, width=350)
+        masters = get_masters()
+        ctk.CTkLabel(win, text="Cikk kiválasztása a törzsből:", font=("Arial", 13, "bold")).pack(anchor="w", padx=20, pady=(12, 0))
+        master_combo = ctk.CTkComboBox(win, values=[m[0] for m in masters] or ["Nincs még törzscikk"], width=420)
+        master_combo.pack(padx=20, pady=5)
+        if masters:
+            master_combo.set(masters[0][0])
+        else:
+            master_combo.set("Nincs még törzscikk")
+
+        ctk.CTkLabel(win, text="Beszállító:").pack(anchor="w", padx=20, pady=(8, 0))
+        e_brand = ctk.CTkEntry(win, width=420)
+        e_brand.pack(padx=20, pady=4)
+        ctk.CTkLabel(win, text="Termék neve:").pack(anchor="w", padx=20, pady=(5, 0))
+        e_name = ctk.CTkEntry(win, width=420)
+        e_name.pack(padx=20, pady=4)
+        ctk.CTkLabel(win, text="Cikkszám (nem kötelező):").pack(anchor="w", padx=20, pady=(5, 0))
+        e_sku = ctk.CTkEntry(win, width=420)
+        e_sku.pack(padx=20, pady=4)
+
+        identity_widgets = [e_brand, e_name, e_sku]
+
+        def select_master(_event=None):
+            selected = master_combo.get()
+            match = next((m for m in get_masters() if m[0] == selected), None)
+            for ent in identity_widgets:
+                ent.configure(state="normal")
+                ent.delete(0, "end")
+            if match:
+                for ent, val in zip(identity_widgets, match[1:]):
+                    ent.insert(0, val)
+            if self.role != "admin":
+                for ent in identity_widgets:
+                    ent.configure(state="disabled")
+
+        master_combo.configure(command=lambda _value: select_master())
+
+        # Gépelés közbeni keresés külön, a mező ALATT megjelenő listával.
+        # Így a találatok nem takarják el a beviteli mezőt, és minden leütésre szűkülnek.
+        result_popup = None
+        result_list = None
+
+        def close_results(_event=None):
+            nonlocal result_popup, result_list
+            if result_popup is not None:
+                try:
+                    result_popup.destroy()
+                except Exception:
+                    pass
+            result_popup = None
+            result_list = None
+
+        def choose_result(_event=None):
+            if result_list is None:
+                return
+            selection = result_list.curselection()
+            if not selection:
+                return
+            value = result_list.get(selection[0])
+            master_combo.set(value)
+            close_results()
+            select_master()
+
+        def filter_masters(_event=None):
+            nonlocal result_popup, result_list
+            query = master_combo.get().strip().casefold()
+            all_masters = get_masters()
+            filtered = [m[0] for m in all_masters if query in m[0].casefold()] if query else [m[0] for m in all_masters]
+
+            if not filtered:
+                close_results()
+                return
+
+            if result_popup is None or not result_popup.winfo_exists():
+                result_popup = tk.Toplevel(win)
+                result_popup.overrideredirect(True)
+                result_popup.attributes("-topmost", True)
+                result_list = tk.Listbox(
+                    result_popup, height=min(6, len(filtered)),
+                    activestyle="dotbox", exportselection=False
+                )
+                result_list.pack(fill="both", expand=True)
+                result_list.bind("<ButtonRelease-1>", choose_result)
+                result_list.bind("<Return>", choose_result)
+                result_list.bind("<Escape>", close_results)
+            else:
+                result_list.configure(height=min(6, len(filtered)))
+
+            result_list.delete(0, "end")
+            for item in filtered:
+                result_list.insert("end", item)
+
+            # A lista a combobox pontosan alá kerül, soha nem a mező fölé.
+            master_combo.update_idletasks()
+            x = master_combo.winfo_rootx()
+            y = master_combo.winfo_rooty() + master_combo.winfo_height()
+            width = master_combo.winfo_width()
+            row_height = 22
+            result_popup.geometry(f"{width}x{min(6, len(filtered)) * row_height}+{x}+{y}")
+            result_popup.deiconify()
+            result_popup.lift()
+
+        entry_widget = getattr(master_combo, "_entry", None)
+        if entry_widget is not None:
+            entry_widget.bind("<KeyRelease>", filter_masters, add="+")
+            entry_widget.bind("<FocusOut>", lambda _e: win.after(180, close_results), add="+")
+
+        if masters:
+            select_master()
+        elif self.role != "admin":
+            for ent in identity_widgets:
+                ent.configure(state="disabled")
+
+        if self.role == "admin":
+            def create_master():
+                brand, name, sku = e_brand.get().strip(), e_name.get().strip(), e_sku.get().strip()
+                if not brand or not name:
+                    messagebox.showerror("Hiányzó adat", "A beszállító és a termék neve kötelező.", parent=win)
+                    return
+                data = self.db.load_sheet_data("CikkTorzzs")
+                for col in ["Beszállító", "Termék neve", "Cikkszám"]:
+                    if col not in data.columns:
+                        data[col] = ""
+                duplicate = data[
+                    data["Beszállító"].astype(str).str.strip().str.casefold().eq(brand.casefold()) &
+                    data["Termék neve"].astype(str).str.strip().str.casefold().eq(name.casefold())
+                ]
+                if not duplicate.empty:
+                    messagebox.showwarning("Már létezik", "Ilyen beszállítóval és terméknévvel már van törzscikk. Válaszd ki a listából.", parent=win)
+                    return
+                data = pd.concat([data, pd.DataFrame([{"Beszállító": brand, "Termék neve": name, "Cikkszám": sku}])], ignore_index=True)
+                self.db.save_sheet_data("CikkTorzzs", data)
+                self.log_action(f"Új törzscikk létrehozva: {brand} - {name}" + (f" (Cikkszám: {sku})" if sku else ""))
+                updated = get_masters()
+                master_combo.configure(values=[m[0] for m in updated])
+                master_combo.set(next((m[0] for m in updated if m[1] == brand and m[2] == name), ""))
+                messagebox.showinfo("Siker", "A törzscikk elmentve. Most a készletadatokat is rögzítheted.", parent=win)
+            ctk.CTkButton(win, text="＋ Új törzscikk létrehozása", command=create_master, fg_color="#2563eb").pack(pady=7)
+
+        ctk.CTkLabel(win, text="Készletadatok", font=("Arial", 13, "bold")).pack(anchor="w", padx=20, pady=(8, 0))
+        ctk.CTkLabel(win, text="Lot szám:").pack(anchor="w", padx=20)
+        e_lot = ctk.CTkEntry(win, width=420)
+        e_lot.pack(padx=20, pady=3)
+        ctk.CTkLabel(win, text="Gyártás ideje (ÉÉÉÉ-HH-NN):").pack(anchor="w", padx=20)
+        e_gyartas = ctk.CTkEntry(win, width=420)
         e_gyartas.insert(0, datetime.date.today().strftime("%Y-%m-%d"))
-        e_gyartas.pack(padx=20, pady=5)
-
-        ctk.CTkLabel(win, text="Lejárati idő (ÉÉÉÉ-HH-NN):").pack(anchor="w", padx=20, pady=(10, 0))
-        date_frame = ctk.CTkFrame(win, fg_color="transparent")
-        date_frame.pack(padx=20, pady=5, fill="x")
-
-        e_lejarat = ctk.CTkEntry(date_frame, width=240)
-        e_lejarat.pack(side="left", padx=(0, 5))
+        e_gyartas.pack(padx=20, pady=3)
+        ctk.CTkLabel(win, text="Lejárati idő (ÉÉÉÉ-HH-NN):").pack(anchor="w", padx=20)
+        e_lejarat = ctk.CTkEntry(win, width=420)
         e_lejarat.insert(0, (datetime.date.today() + datetime.timedelta(days=365)).strftime("%Y-%m-%d"))
-
-        def open_calendar():
-            cal_win = ctk.CTkToplevel(win)
-            cal_win.title("Válassz lejárati dátumot")
-            cal_win.geometry("300x300")
-            cal_win.grab_set()
-            cal = Calendar(cal_win, selectmode='day', year=datetime.date.today().year,
-                           month=datetime.date.today().month, day=datetime.date.today().day)
-            cal.pack(pady=10, fill="both", expand=True)
-
-            def set_date():
-                e_lejarat.delete(0, "end")
-                e_lejarat.insert(0, cal.selection_get().strftime("%Y-%m-%d"))
-                cal_win.destroy()
-
-            ctk.CTkButton(cal_win, text="Kiválasztás", command=set_date, fg_color="green").pack(pady=10)
-
-        ctk.CTkButton(date_frame, text="📅 Naptár", width=100, command=open_calendar).pack(side="right")
-
-        ctk.CTkLabel(win, text="Mennyiség (egész szám, min. 1):").pack(anchor="w", padx=20, pady=(10, 0))
-        e_mennyiseg = ctk.CTkEntry(win, width=350)
+        e_lejarat.pack(padx=20, pady=3)
+        ctk.CTkLabel(win, text="Mennyiség (egész szám, min. 1):").pack(anchor="w", padx=20)
+        e_mennyiseg = ctk.CTkEntry(win, width=420)
         e_mennyiseg.insert(0, "1")
-        e_mennyiseg.pack(padx=20, pady=5)
-
-        ctk.CTkLabel(win, text="Megjegyzés (Gyártás):").pack(anchor="w", padx=20, pady=(10, 0))
-        e_megj = ctk.CTkEntry(win, width=350)
-        e_megj.pack(padx=20, pady=5)
+        e_mennyiseg.pack(padx=20, pady=3)
+        ctk.CTkLabel(win, text="Megjegyzés:").pack(anchor="w", padx=20)
+        e_megj = ctk.CTkEntry(win, width=420)
+        e_megj.pack(padx=20, pady=3)
 
         def save_new():
-            brand, name, lot, gyartas, lejarat, menny, megj = e_brand.get().strip(), e_name.get().strip(), e_lot.get().strip(), e_gyartas.get().strip(), e_lejarat.get().strip(), e_mennyiseg.get().strip(), e_megj.get().strip()
-
-            if not brand or not name or not lot or not menny:
-                messagebox.showerror("Hiba", "Minden kötelező mezőt ki kell tölteni!", parent=win)
+            selected = master_combo.get()
+            match = next((m for m in get_masters() if m[0] == selected), None)
+            brand, name, sku = e_brand.get().strip(), e_name.get().strip(), e_sku.get().strip()
+            if self.role != "admin":
+                if not match:
+                    messagebox.showerror("Hiba", "Válassz egy adatbázisban már létező cikket.", parent=win)
+                    return
+                _, brand, name, sku = match
+            elif not match:
+                messagebox.showerror("Hiba", "Előbb hozd létre és mentsd el a törzscikket, vagy válassz egy meglévőt.", parent=win)
                 return
+            else:
+                # Meglévő törzscikk kiválasztásakor a mentett azonosító adatok az irányadók.
+                _, brand, name, sku = match
 
+            lot, gyartas, lejarat = e_lot.get().strip(), e_gyartas.get().strip(), e_lejarat.get().strip()
+            menny, megj = e_mennyiseg.get().strip(), e_megj.get().strip()
+            if not lot or not menny:
+                messagebox.showerror("Hiba", "A Lot szám és a mennyiség kötelező.", parent=win)
+                return
             try:
                 menny_val = int(menny)
+                if menny_val < 1:
+                    raise ValueError
             except ValueError:
-                messagebox.showerror("Hiba", "A mennyiség csak érvényes egész szám lehet!", parent=win)
-                return
-
-            if menny_val < 1:
-                messagebox.showerror("Hiba", "A mennyiség nem lehet kisebb, mint 1!", parent=win)
+                messagebox.showerror("Hiba", "A mennyiség legalább 1-es egész szám legyen.", parent=win)
                 return
 
             df = self.db.load_sheet_data("Keszlet")
-            if not df.empty and lot in df["Lot szám"].values:
-                if messagebox.askyesno("Létező Lot szám",
-                                       f"Már létezik termék ezzel a Lot számmal ({lot}). Hozzáadjuk?", parent=win):
-                    idx = df[df["Lot szám"] == lot].index[0]
+            if df.empty:
+                df = pd.DataFrame(columns=["ID", "Beszállító", "Termék neve", "Cikkszám", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség", "Megjegyzés"])
+            for col in ["Cikkszám"]:
+                if col not in df.columns:
+                    df[col] = ""
+            if "Lot szám" in df.columns and lot in df["Lot szám"].astype(str).values:
+                if messagebox.askyesno("Létező Lot szám", f"Már létezik készlet ezzel a Lot számmal ({lot}). Hozzáadjuk?", parent=win):
+                    idx = df[df["Lot szám"].astype(str) == lot].index[0]
                     df.loc[idx, "Mennyiség"] = str(int(float(df.loc[idx, "Mennyiség"])) + menny_val)
                     self.db.save_sheet_data("Keszlet", df)
-                    self.log_action(f"Meglévő Lot bővítve: {brand} - {name} (Lot: {lot}), +{menny_val}")
                     self.refresh_keszlet_view()
-                    if hasattr(self, "refresh_admin_szallitas_view"):
-                        self.refresh_admin_szallitas_view()
                     win.destroy()
-                    messagebox.showinfo("Siker", "Mennyiség hozzáadva!", parent=self)
                     return
-                else:
-                    return
-
-            if not df.empty and "ID" in df.columns:
-                try:
-                    max_id = df["ID"].astype(int).max()
-                    next_id = str(max_id + 1)
-                except ValueError:
-                    next_id = str(len(df) + 1)
-            else:
-                next_id = "1"
-
-            new_row = pd.DataFrame([{
-                "ID": next_id, "Beszállító": brand, "Termék neve": name, "Lot szám": lot,
-                "Gyártás ideje": gyartas, "Lejárat": lejarat, "Mennyiség": str(menny_val), "Megjegyzés": megj
-            }])
-            df = pd.concat([df, new_row], ignore_index=True)
-            self.db.save_sheet_data("Keszlet", df)
-
-            self.log_action(f"Új termék hozzáadva: {brand} - {name} (Lot: {lot})")
+                return
+            try:
+                next_id = str(int(pd.to_numeric(df.get("ID", pd.Series(dtype=str)), errors="coerce").max()) + 1) if not df.empty and pd.to_numeric(df.get("ID", pd.Series(dtype=str)), errors="coerce").notna().any() else "1"
+            except Exception:
+                next_id = str(len(df) + 1)
+            new_row = {"ID": next_id, "Beszállító": brand, "Termék neve": name, "Cikkszám": sku, "Lot szám": lot,
+                       "Gyártás ideje": gyartas, "Lejárat": lejarat, "Mennyiség": str(menny_val), "Megjegyzés": megj}
+            self.db.save_sheet_data("Keszlet", pd.concat([df, pd.DataFrame([new_row])], ignore_index=True))
+            self.log_action(f"Készlet rögzítve: {brand} - {name} (Lot: {lot})")
             self.refresh_keszlet_view()
             if hasattr(self, "refresh_admin_szallitas_view"):
                 self.refresh_admin_szallitas_view()
             win.destroy()
-            messagebox.showinfo("Siker", "Cikk sikeresen hozzáadva!", parent=self)
+            messagebox.showinfo("Siker", "A cikk készletadatai sikeresen mentve.", parent=self)
 
-        ctk.CTkButton(win, text="Mentés", command=save_new, fg_color="green", width=200).pack(pady=20)
+        ctk.CTkButton(win, text="Készletadatok mentése", command=save_new, fg_color="green", width=240).pack(pady=14)
 
     def open_edit_product_window(self):
         """Admin/vezető funkció a meglévő készleten lévő termék adatainak szerkesztésére."""
