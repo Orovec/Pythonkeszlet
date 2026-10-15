@@ -304,7 +304,7 @@ class KeszletApp(ctk.CTk):
         table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         columns = (
-        "ID", "Beszállító (Brand)", "Termék neve", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség", "Megjegyzés")
+        "ID", "Beszállító (Brand)", "Termék neve", "Cikkszám", "Lot szám", "Gyártás ideje", "Lejárat", "Mennyiség", "Megjegyzés")
         self.keszlet_tree = ttk.Treeview(table_frame, columns=columns, show="headings")
 
         for col in columns:
@@ -354,7 +354,7 @@ class KeszletApp(ctk.CTk):
 
             row_id = str(row.get("ID", ""))
             tree_item = self.keszlet_tree.insert("", "end", values=(
-                row_id, row.get("Beszállító", ""), row.get("Termék neve", ""),
+                row_id, row.get("Beszállító", ""), row.get("Termék neve", ""), row.get("Cikkszám", ""),
                 row.get("Lot szám", ""), row.get("Gyártás ideje", ""), row.get("Lejárat", ""),
                 qty, row.get("Megjegyzés", "")
             ))
