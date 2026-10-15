@@ -10,6 +10,7 @@ import os
 import webbrowser
 import fuvar_module
 from database_module import DatabaseManager
+from raklapkisero_module import RaklapKiseroWindow
 
 # --- Globális Beállítások ---
 ctk.set_appearance_mode("System")
@@ -37,6 +38,20 @@ class KeszletApp(ctk.CTk):
                 {"felhasznalo": "admin", "jelszo": "admin123", "szint": "admin"}
             ])
             self.db.save_sheet_data("Felhasznalok", df)
+
+    def open_raklapkisero(self):
+        """Megnyitja a raklapkísérő ablakot az aktuális szállítmány tételeivel."""
+        items = getattr(self, "temp_shipment_items", [])
+        if not items:
+            messagebox.showwarning(
+                "Nincs tétel",
+                "Előbb adj hozzá legalább egy tételt a jobb oldali szállítmánylistához.",
+                parent=self.tab_admin_szallitas
+            )
+            return
+
+        shipment_name = self.admin_shipment_name_entry.get().strip() or "Névtelen szállítmány"
+        RaklapKiseroWindow(self, shipment_name, items)
 
     def clear_window(self):
         for widget in self.winfo_children():
@@ -263,6 +278,24 @@ class KeszletApp(ctk.CTk):
             self.refresh_current_shipment_view()
             return True
         return False
+
+    def get_master_sku(self, brand, product_name):
+        """Cikkszám lekérése a cikktörzsből, régi készletsorokhoz is."""
+        try:
+            masters = self.db.load_sheet_data("CikkTorzzs")
+            if masters.empty or "Cikkszám" not in masters.columns:
+                return ""
+            brand_key = str(brand or "").strip().casefold()
+            name_key = str(product_name or "").strip().casefold()
+            matched = masters[
+                masters["Beszállító"].astype(str).str.strip().str.casefold().eq(brand_key) &
+                masters["Termék neve"].astype(str).str.strip().str.casefold().eq(name_key)
+                ]
+            if not matched.empty:
+                return str(matched.iloc[0].get("Cikkszám", "") or "").strip()
+        except Exception:
+            pass
+        return ""
 
     def build_keszlet_tab(self):
         control_frame = ctk.CTkFrame(self.tab_keszlet)
@@ -949,6 +982,16 @@ class KeszletApp(ctk.CTk):
                                               height=24)
         btn_del_from_shipment.pack(side="right")
 
+        btn_raklapkisero = ctk.CTkButton(
+            header_right_frame,
+            text="Raklapokra osztás / nyomtatás",
+            command=self.open_raklapkisero,
+            fg_color="#2563eb",
+            width=190,
+            height=24
+        )
+        btn_raklapkisero.pack(side="right", padx=6)
+
         right_columns = ("SorID", "Termék neve", "Lot", "Mennyiség", "Megjegyzés")
         self.current_shipment_tree = ttk.Treeview(right_pane, columns=right_columns, show="headings", height=12)
         right_col_widths = {"SorID": 40, "Termék neve": 140, "Lot": 80, "Mennyiség": 65, "Megjegyzés": 130}
@@ -972,10 +1015,13 @@ class KeszletApp(ctk.CTk):
 
         self.refresh_admin_szallitas_view()
 
+
     def reset_admin_search(self):
         if hasattr(self, "admin_search_entry"):
             self.admin_search_entry.delete(0, "end")
             self.refresh_admin_szallitas_view()
+
+
 
     def refresh_admin_szallitas_view(self):
         if not hasattr(self, "admin_keszlet_tree"):
@@ -1027,6 +1073,8 @@ class KeszletApp(ctk.CTk):
                 str(idx), item.get("Termék neve", ""), item.get("Lot szám", ""),
                 item.get("Mennyiség", ""), item.get("Megjegyzés", "")
             ))
+
+
 
     def send_order_to_user(self):
         if self.check_shipment_name_validity():
