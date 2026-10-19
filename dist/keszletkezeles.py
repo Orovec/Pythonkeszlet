@@ -1407,13 +1407,14 @@ class KeszletApp(ctk.CTk):
                 df_kiadas = self.db.load_sheet_data("Kiadasok")
 
                 for itm in items_list:
-                    shipment_name, brand, name, lot, qty_str, pickup_date, timeslot, note = itm
+                    shipment_name, brand, name, cikkszam, lot, qty_str, pickup_date, timeslot, note = itm
                     ordered_qty = int(float(qty_str))
 
                     matched_rows = df_orders[
                         (df_orders["Szallitmany_Nev"] == shipment_name) &
                         (df_orders["Beszállító"] == brand) &
                         (df_orders["Termék neve"] == name) &
+                        (df_orders["Cikkszám"] == cikkszam)&
                         (df_orders["Lot szám"] == lot) &
                         (df_orders["Mennyiség"] == qty_str)
                         ]
